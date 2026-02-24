@@ -757,6 +757,10 @@
 
     .cat-empty { text-align: center; color: #a0aec0; font-size: 0.82rem; padding: 12px; }
 
+    /* ── Repeat toggle ── */
+    #repeatUntilGroup { display: none; }
+    .repeat-icon { opacity: 0.75; font-size: 0.8em; margin-left: 2px; }
+
     .modal-actions {
       display: flex;
       gap: 8px;
@@ -877,6 +881,19 @@
       <div class="form-group">
         <label class="form-label">End Time</label>
         <input class="form-input" id="evEnd" type="time">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Repeat</label>
+        <select class="form-select" id="evRepeat" onchange="onRepeatChange()">
+          <option value="">Does not repeat</option>
+          <option value="weekly">Every week</option>
+        </select>
+      </div>
+      <div class="form-group" id="repeatUntilGroup">
+        <label class="form-label">Until (optional)</label>
+        <input class="form-input" id="evRepeatUntil" type="date">
       </div>
     </div>
     <div class="form-group">
@@ -1053,6 +1070,25 @@ function updateNavTitle() {
 }
 
 // ═══════════════════════════════════════════
+//  RECURRING EVENT HELPERS
+// ═══════════════════════════════════════════
+function eventsOnDate(ds) {
+  return state.events.filter(e => {
+    if (e.date === ds) return true;
+    if (e.repeat !== 'weekly') return false;
+    const diffDays = Math.round((new Date(ds + 'T00:00:00') - new Date(e.date + 'T00:00:00')) / 86400000);
+    if (diffDays <= 0 || diffDays % 7 !== 0) return false;
+    if (e.repeatUntil && ds > e.repeatUntil) return false;
+    return true;
+  });
+}
+
+function onRepeatChange() {
+  const val = document.getElementById('evRepeat').value;
+  document.getElementById('repeatUntilGroup').style.display = val === 'weekly' ? '' : 'none';
+}
+
+// ═══════════════════════════════════════════
 //  MONTHLY VIEW
 // ═══════════════════════════════════════════
 function renderMonthly() {
@@ -1088,14 +1124,14 @@ function renderMonthly() {
 }
 
 function monthCell(day, ds, otherMo, td) {
-  const evs = state.events.filter(e => e.date === ds);
+  const evs = eventsOnDate(ds);
   const isToday = ds === td;
   const cls = ['month-cell', otherMo ? 'other-month' : '', isToday ? 'today' : ''].filter(Boolean).join(' ');
   const max = 3;
   let evHtml = evs.slice(0,max).map(e =>
     `<div class="cell-event" style="background:${getEventColor(e)}"
          onclick="event.stopPropagation();openEditEvent('${e.id}')"
-         title="${esc(e.title)}">${esc(e.title)}</div>`
+         title="${esc(e.title)}">${esc(e.title)}${e.repeat==='weekly'?' ↻':''}</div>`
   ).join('');
   if (evs.length > max) evHtml += `<div class="cell-more">+${evs.length-max} more</div>`;
 
@@ -1126,14 +1162,14 @@ function renderWeekly() {
   html += `</div><div class="week-body">`;
 
   // All-day events row
-  const hasAllDay = days.some(d => state.events.some(e => e.date === toStr(d) && !e.startTime));
+  const hasAllDay = days.some(d => eventsOnDate(toStr(d)).some(e => !e.startTime));
   if (hasAllDay) {
     html += `<div class="week-time-row"><div class="time-label" style="font-size:0.62rem">All Day</div>`;
     days.forEach(d => {
       const ds = toStr(d), isT = ds === td;
-      const evs = state.events.filter(e => e.date === ds && !e.startTime);
+      const evs = eventsOnDate(ds).filter(e => !e.startTime);
       html += `<div class="week-cell${isT?' today-col':''}" onclick="openAddEventAt('${ds}','')">
-        ${evs.map(e=>`<div class="week-event" style="background:${getEventColor(e)}" onclick="event.stopPropagation();openEditEvent('${e.id}')" title="${esc(e.title)}">${esc(e.title)}</div>`).join('')}
+        ${evs.map(e=>`<div class="week-event" style="background:${getEventColor(e)}" onclick="event.stopPropagation();openEditEvent('${e.id}')" title="${esc(e.title)}">${esc(e.title)}${e.repeat==='weekly'?' ↻':''}</div>`).join('')}
       </div>`;
     });
     html += `</div>`;
@@ -1145,9 +1181,9 @@ function renderWeekly() {
     html += `<div class="week-time-row"><div class="time-label">${tl}</div>`;
     days.forEach(d => {
       const ds = toStr(d), isT = ds === td;
-      const evs = state.events.filter(e => e.date === ds && e.startTime && parseInt(e.startTime) === h);
+      const evs = eventsOnDate(ds).filter(e => e.startTime && parseInt(e.startTime) === h);
       html += `<div class="week-cell${isT?' today-col':''}" onclick="openAddEventAt('${ds}','${String(h).padStart(2,'0')}:00')">
-        ${evs.map(e=>`<div class="week-event" style="background:${getEventColor(e)}" onclick="event.stopPropagation();openEditEvent('${e.id}')" title="${esc(e.title)} ${fmtTime(e.startTime)}">${esc(e.title)}</div>`).join('')}
+        ${evs.map(e=>`<div class="week-event" style="background:${getEventColor(e)}" onclick="event.stopPropagation();openEditEvent('${e.id}')" title="${esc(e.title)} ${fmtTime(e.startTime)}">${esc(e.title)}${e.repeat==='weekly'?' ↻':''}</div>`).join('')}
       </div>`;
     });
     html += `</div>`;
@@ -1163,7 +1199,7 @@ function renderDaily() {
   const d = state.curDate;
   const ds = toStr(d);
   const isToday = ds === todayStr();
-  const dayEvs = state.events.filter(e => e.date === ds);
+  const dayEvs = eventsOnDate(ds);
 
   let html = `<div class="day-view">
     <div class="day-header-banner">
@@ -1206,7 +1242,9 @@ function dayEventHtml(e) {
     ? fmtTime(e.startTime) + (e.endTime ? ' &ndash; ' + fmtTime(e.endTime) : '')
     : '';
   const catObj  = state.categories.find(c => c.id === e.categoryId);
-  const cat = catObj ? `<div class="day-event-time">${esc(catObj.name)}</div>` : '';
+  const catLine = catObj ? esc(catObj.name) : '';
+  const repeatLine = e.repeat === 'weekly' ? ' &nbsp;↻ Weekly' : '';
+  const cat = (catLine || repeatLine) ? `<div class="day-event-time">${catLine}${repeatLine}</div>` : '';
   return `<div class="day-event" style="background:${getEventColor(e)}" onclick="event.stopPropagation();openEditEvent('${e.id}')">
     <div class="day-event-info">
       <div class="day-event-title">${esc(e.title)}</div>
@@ -1450,6 +1488,9 @@ function openAddEvent(date, time) {
   document.getElementById('evCategory').innerHTML = buildCategoryOptions('');
   document.getElementById('evStart').value    = time || '';
   document.getElementById('evEnd').value      = '';
+  document.getElementById('evRepeat').value   = '';
+  document.getElementById('evRepeatUntil').value = '';
+  document.getElementById('repeatUntilGroup').style.display = 'none';
   document.getElementById('evDesc').value     = '';
   document.getElementById('colorPicker').innerHTML = buildColorSwatches(COLORS[0]);
   document.getElementById('modalActions').innerHTML = `
@@ -1472,6 +1513,9 @@ function openEditEvent(id) {
   document.getElementById('evCategory').innerHTML = buildCategoryOptions(e.categoryId || '');
   document.getElementById('evStart').value    = e.startTime || '';
   document.getElementById('evEnd').value      = e.endTime   || '';
+  document.getElementById('evRepeat').value   = e.repeat || '';
+  document.getElementById('evRepeatUntil').value = e.repeatUntil || '';
+  document.getElementById('repeatUntilGroup').style.display = e.repeat === 'weekly' ? '' : 'none';
   document.getElementById('evDesc').value     = e.description || '';
   document.getElementById('colorPicker').innerHTML = buildColorSwatches(state._color);
   document.getElementById('modalActions').innerHTML = `
@@ -1494,6 +1538,9 @@ function saveEvent() {
   const catId = document.getElementById('evCategory').value;
   const cat   = state.categories.find(c => c.id === catId);
 
+  const repeat      = document.getElementById('evRepeat').value;
+  const repeatUntil = document.getElementById('evRepeatUntil').value;
+
   const ev = {
     id:          state._editId || uid(),
     title,
@@ -1501,6 +1548,8 @@ function saveEvent() {
     categoryId:  catId,
     startTime:   document.getElementById('evStart').value,
     endTime:     document.getElementById('evEnd').value,
+    repeat:      repeat || '',
+    repeatUntil: repeat === 'weekly' ? repeatUntil : '',
     description: document.getElementById('evDesc').value.trim(),
     color:       cat ? cat.color : state._color   // fallback if category later deleted
   };
