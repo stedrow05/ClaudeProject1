@@ -670,6 +670,93 @@
     }
     .color-swatch.selected { border-color: #2d3748; transform: scale(1.12); }
 
+    /* ── Category manager ── */
+    .cat-manage-btn {
+      background: none;
+      border: none;
+      color: #4299e1;
+      font-size: 0.72rem;
+      cursor: pointer;
+      padding: 0;
+      font-weight: 600;
+      text-decoration: underline;
+    }
+    .cat-manage-btn:hover { color: #2b6cb0; }
+
+    .cat-list { display: flex; flex-direction: column; gap: 5px; max-height: 300px; overflow-y: auto; margin-bottom: 14px; }
+
+    .cat-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      background: #f7fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+    }
+
+    .cat-color-input {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid #e2e8f0;
+      padding: 0;
+      cursor: pointer;
+      flex-shrink: 0;
+      overflow: hidden;
+      background: none;
+    }
+    .cat-color-input::-webkit-color-swatch-wrapper { padding: 0; }
+    .cat-color-input::-webkit-color-swatch { border: none; border-radius: 50%; }
+
+    .cat-name-input {
+      flex: 1;
+      padding: 5px 8px;
+      border: 1px solid #e2e8f0;
+      border-radius: 5px;
+      font-size: 0.84rem;
+      font-family: inherit;
+      outline: none;
+      background: white;
+    }
+    .cat-name-input:focus { border-color: #4299e1; }
+
+    .cat-delete-btn {
+      background: none;
+      border: none;
+      color: #cbd5e0;
+      cursor: pointer;
+      font-size: 0.9rem;
+      flex-shrink: 0;
+      transition: color 0.15s;
+      padding: 2px 5px;
+    }
+    .cat-delete-btn:hover { color: #fc8181; }
+
+    .cat-add-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding-top: 12px;
+      border-top: 1px solid #e2e8f0;
+    }
+
+    .cat-add-btn {
+      background: #48bb78;
+      color: white;
+      border: none;
+      padding: 7px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.84rem;
+      font-weight: 600;
+      white-space: nowrap;
+      transition: background 0.18s;
+    }
+    .cat-add-btn:hover { background: #38a169; }
+
+    .cat-empty { text-align: center; color: #a0aec0; font-size: 0.82rem; padding: 12px; }
+
     .modal-actions {
       display: flex;
       gap: 8px;
@@ -773,15 +860,12 @@
         <input class="form-input" id="evDate" type="date">
       </div>
       <div class="form-group">
-        <label class="form-label">Category</label>
-        <select class="form-select" id="evCategory">
-          <option value="">— None —</option>
-          <option value="Lesson">Lesson</option>
-          <option value="Meeting">Meeting</option>
-          <option value="Recess / Lunch">Recess / Lunch</option>
-          <option value="Special Event">Special Event</option>
-          <option value="Admin">Admin</option>
-          <option value="Other">Other</option>
+        <label class="form-label" style="display:flex;justify-content:space-between;align-items:center">
+          Category
+          <button class="cat-manage-btn" onclick="openCategoryManager()">Manage</button>
+        </label>
+        <select class="form-select" id="evCategory" onchange="onCategoryChange()">
+          <!-- populated dynamically -->
         </select>
       </div>
     </div>
@@ -807,11 +891,37 @@
   </div>
 </div>
 
+<!-- ═══ Category Manager Modal ═══ -->
+<div class="modal-overlay" id="categoryModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Manage Categories</div>
+      <button class="modal-close" onclick="closeCategoryModal()">&#10005;</button>
+    </div>
+    <div class="cat-list" id="catList"></div>
+    <div class="cat-add-row">
+      <input type="color" class="cat-color-input" id="newCatColor" value="#4299e1">
+      <input class="cat-name-input" id="newCatName" type="text" placeholder="New category name..."
+             onkeydown="if(event.key==='Enter')addCategory()">
+      <button class="cat-add-btn" onclick="addCategory()">Add</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ═══════════════════════════════════════════
 //  CONSTANTS
 // ═══════════════════════════════════════════
 const COLORS = ['#4299e1','#48bb78','#ed8936','#e53e3e','#9f7aea','#38b2ac','#f6ad55','#667eea'];
+
+const DEFAULT_CATEGORIES = [
+  { id: 'c1', name: 'Lesson',         color: '#4299e1' },
+  { id: 'c2', name: 'Meeting',        color: '#9f7aea' },
+  { id: 'c3', name: 'Recess / Lunch', color: '#48bb78' },
+  { id: 'c4', name: 'Special Event',  color: '#ed8936' },
+  { id: 'c5', name: 'Admin',          color: '#718096' },
+  { id: 'c6', name: 'Other',          color: '#38b2ac' },
+];
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAYS_S = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const DAYS_L = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -825,6 +935,7 @@ let state = {
   curDate: new Date(),
   events: [],
   todos: [],
+  categories: [],
   todoFilter: 'all',
   todoFilterDate: '',   // set after todayStr() is available
   _color: COLORS[0],
@@ -837,13 +948,20 @@ let state = {
 function load() {
   try {
     const d = JSON.parse(localStorage.getItem('teacherAgenda2') || '{}');
-    state.events = d.events || [];
-    state.todos  = d.todos  || [];
-  } catch(e) {}
+    state.events     = d.events || [];
+    state.todos      = d.todos  || [];
+    state.categories = (d.categories && d.categories.length)
+      ? d.categories
+      : DEFAULT_CATEGORIES.map(c => ({...c}));
+  } catch(e) {
+    state.categories = DEFAULT_CATEGORIES.map(c => ({...c}));
+  }
 }
 
 function save() {
-  localStorage.setItem('teacherAgenda2', JSON.stringify({ events: state.events, todos: state.todos }));
+  localStorage.setItem('teacherAgenda2', JSON.stringify({
+    events: state.events, todos: state.todos, categories: state.categories
+  }));
 }
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
@@ -975,7 +1093,7 @@ function monthCell(day, ds, otherMo, td) {
   const cls = ['month-cell', otherMo ? 'other-month' : '', isToday ? 'today' : ''].filter(Boolean).join(' ');
   const max = 3;
   let evHtml = evs.slice(0,max).map(e =>
-    `<div class="cell-event" style="background:${e.color}"
+    `<div class="cell-event" style="background:${getEventColor(e)}"
          onclick="event.stopPropagation();openEditEvent('${e.id}')"
          title="${esc(e.title)}">${esc(e.title)}</div>`
   ).join('');
@@ -1015,7 +1133,7 @@ function renderWeekly() {
       const ds = toStr(d), isT = ds === td;
       const evs = state.events.filter(e => e.date === ds && !e.startTime);
       html += `<div class="week-cell${isT?' today-col':''}" onclick="openAddEventAt('${ds}','')">
-        ${evs.map(e=>`<div class="week-event" style="background:${e.color}" onclick="event.stopPropagation();openEditEvent('${e.id}')" title="${esc(e.title)}">${esc(e.title)}</div>`).join('')}
+        ${evs.map(e=>`<div class="week-event" style="background:${getEventColor(e)}" onclick="event.stopPropagation();openEditEvent('${e.id}')" title="${esc(e.title)}">${esc(e.title)}</div>`).join('')}
       </div>`;
     });
     html += `</div>`;
@@ -1029,7 +1147,7 @@ function renderWeekly() {
       const ds = toStr(d), isT = ds === td;
       const evs = state.events.filter(e => e.date === ds && e.startTime && parseInt(e.startTime) === h);
       html += `<div class="week-cell${isT?' today-col':''}" onclick="openAddEventAt('${ds}','${String(h).padStart(2,'0')}:00')">
-        ${evs.map(e=>`<div class="week-event" style="background:${e.color}" onclick="event.stopPropagation();openEditEvent('${e.id}')" title="${esc(e.title)} ${fmtTime(e.startTime)}">${esc(e.title)}</div>`).join('')}
+        ${evs.map(e=>`<div class="week-event" style="background:${getEventColor(e)}" onclick="event.stopPropagation();openEditEvent('${e.id}')" title="${esc(e.title)} ${fmtTime(e.startTime)}">${esc(e.title)}</div>`).join('')}
       </div>`;
     });
     html += `</div>`;
@@ -1087,8 +1205,9 @@ function dayEventHtml(e) {
   const timeRange = e.startTime
     ? fmtTime(e.startTime) + (e.endTime ? ' &ndash; ' + fmtTime(e.endTime) : '')
     : '';
-  const cat = e.category ? `<div class="day-event-time">${esc(e.category)}</div>` : '';
-  return `<div class="day-event" style="background:${e.color}" onclick="event.stopPropagation();openEditEvent('${e.id}')">
+  const catObj  = state.categories.find(c => c.id === e.categoryId);
+  const cat = catObj ? `<div class="day-event-time">${esc(catObj.name)}</div>` : '';
+  return `<div class="day-event" style="background:${getEventColor(e)}" onclick="event.stopPropagation();openEditEvent('${e.id}')">
     <div class="day-event-info">
       <div class="day-event-title">${esc(e.title)}</div>
       ${timeRange ? `<div class="day-event-time">${timeRange}</div>` : ''}
@@ -1206,6 +1325,100 @@ function renderTodos() {
 }
 
 // ═══════════════════════════════════════════
+//  CATEGORY HELPERS
+// ═══════════════════════════════════════════
+function getEventColor(ev) {
+  if (ev.categoryId) {
+    const cat = state.categories.find(c => c.id === ev.categoryId);
+    if (cat) return cat.color;
+  }
+  return ev.color || COLORS[0];
+}
+
+function buildCategoryOptions(selectedId) {
+  let opts = `<option value="">— None —</option>`;
+  state.categories.forEach(c => {
+    opts += `<option value="${esc(c.id)}"${c.id === selectedId ? ' selected' : ''}>${esc(c.name)}</option>`;
+  });
+  return opts;
+}
+
+function onCategoryChange() {
+  const catId = document.getElementById('evCategory').value;
+  const cat   = state.categories.find(c => c.id === catId);
+  if (cat) {
+    state._color = cat.color;
+    document.getElementById('colorPicker').innerHTML = buildColorSwatches(cat.color);
+  }
+}
+
+// ═══════════════════════════════════════════
+//  CATEGORY MANAGER MODAL
+// ═══════════════════════════════════════════
+function openCategoryManager() {
+  renderCategoryManager();
+  document.getElementById('categoryModal').classList.add('open');
+}
+
+function closeCategoryModal() {
+  document.getElementById('categoryModal').classList.remove('open');
+  // Refresh the category select in the event modal if it's open
+  const evCat = document.getElementById('evCategory');
+  if (evCat) evCat.innerHTML = buildCategoryOptions(evCat.dataset.selected || '');
+}
+
+function renderCategoryManager() {
+  const list = document.getElementById('catList');
+  if (state.categories.length === 0) {
+    list.innerHTML = `<div class="cat-empty">No categories yet. Add one below.</div>`;
+    return;
+  }
+  list.innerHTML = state.categories.map(c => `
+    <div class="cat-item">
+      <input type="color" class="cat-color-input" value="${c.color}"
+             onchange="updateCatColor('${c.id}', this.value)" title="Change color">
+      <input class="cat-name-input" type="text" value="${esc(c.name)}"
+             onchange="updateCatName('${c.id}', this.value)"
+             onblur="updateCatName('${c.id}', this.value)"
+             placeholder="Category name">
+      <button class="cat-delete-btn" onclick="deleteCategory('${c.id}')" title="Delete">&#10005;</button>
+    </div>
+  `).join('');
+}
+
+function addCategory() {
+  const nameEl  = document.getElementById('newCatName');
+  const colorEl = document.getElementById('newCatColor');
+  const name = nameEl.value.trim();
+  if (!name) { nameEl.focus(); return; }
+  state.categories.push({ id: uid(), name, color: colorEl.value });
+  nameEl.value  = '';
+  colorEl.value = '#4299e1';
+  save();
+  renderCategoryManager();
+  // Refresh the select in the event modal if open
+  const evCat = document.getElementById('evCategory');
+  if (evCat) evCat.innerHTML = buildCategoryOptions(evCat.dataset.selected || '');
+}
+
+function deleteCategory(id) {
+  state.categories = state.categories.filter(c => c.id !== id);
+  save();
+  renderCategoryManager();
+  render(); // re-render calendar so event colors update
+}
+
+function updateCatColor(id, color) {
+  const cat = state.categories.find(c => c.id === id);
+  if (cat) { cat.color = color; save(); render(); }
+}
+
+function updateCatName(id, name) {
+  const cat = state.categories.find(c => c.id === id);
+  if (cat && name.trim()) { cat.name = name.trim(); save(); }
+}
+
+// ═══════════════════════════════════════════
 //  EVENT MODAL
 // ═══════════════════════════════════════════
 function buildColorSwatches(sel) {
@@ -1234,7 +1447,7 @@ function openAddEvent(date, time) {
   document.getElementById('evTitle').value    = '';
   document.getElementById('evTitle').classList.remove('error');
   document.getElementById('evDate').value     = date || toStr(state.curDate);
-  document.getElementById('evCategory').value = '';
+  document.getElementById('evCategory').innerHTML = buildCategoryOptions('');
   document.getElementById('evStart').value    = time || '';
   document.getElementById('evEnd').value      = '';
   document.getElementById('evDesc').value     = '';
@@ -1251,16 +1464,16 @@ function openEditEvent(id) {
   const e = state.events.find(e => e.id === id);
   if (!e) return;
   state._editId = id;
-  state._color  = e.color;
+  state._color  = getEventColor(e);
   document.getElementById('modalTitle').textContent = 'Edit Event';
   document.getElementById('evTitle').value    = e.title;
   document.getElementById('evTitle').classList.remove('error');
   document.getElementById('evDate').value     = e.date;
-  document.getElementById('evCategory').value = e.category || '';
+  document.getElementById('evCategory').innerHTML = buildCategoryOptions(e.categoryId || '');
   document.getElementById('evStart').value    = e.startTime || '';
   document.getElementById('evEnd').value      = e.endTime   || '';
   document.getElementById('evDesc').value     = e.description || '';
-  document.getElementById('colorPicker').innerHTML = buildColorSwatches(e.color);
+  document.getElementById('colorPicker').innerHTML = buildColorSwatches(state._color);
   document.getElementById('modalActions').innerHTML = `
     <button class="btn btn-del" onclick="deleteEvent('${id}');closeModal()">Delete</button>
     <button class="btn btn-cancel" onclick="closeModal()">Cancel</button>
@@ -1278,15 +1491,18 @@ function saveEvent() {
   const title = titleEl.value.trim();
   if (!title) { titleEl.classList.add('error'); titleEl.focus(); return; }
 
+  const catId = document.getElementById('evCategory').value;
+  const cat   = state.categories.find(c => c.id === catId);
+
   const ev = {
     id:          state._editId || uid(),
     title,
-    date:        document.getElementById('evDate').value     || toStr(state.curDate),
-    category:    document.getElementById('evCategory').value,
+    date:        document.getElementById('evDate').value || toStr(state.curDate),
+    categoryId:  catId,
     startTime:   document.getElementById('evStart').value,
     endTime:     document.getElementById('evEnd').value,
     description: document.getElementById('evDesc').value.trim(),
-    color:       state._color
+    color:       cat ? cat.color : state._color   // fallback if category later deleted
   };
 
   if (state._editId) {
@@ -1307,9 +1523,12 @@ function deleteEvent(id) {
   render();
 }
 
-// Close modal on backdrop click
+// Close modals on backdrop click
 document.getElementById('eventModal').addEventListener('click', function(e) {
   if (e.target === this) closeModal();
+});
+document.getElementById('categoryModal').addEventListener('click', function(e) {
+  if (e.target === this) closeCategoryModal();
 });
 
 // ═══════════════════════════════════════════
