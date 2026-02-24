@@ -169,13 +169,73 @@
       margin-top: 2px;
     }
 
-    .todo-text {
+    .todo-text-wrap {
       flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .todo-text {
       font-size: 0.83rem;
       line-height: 1.45;
       word-break: break-word;
     }
     .todo-item.completed .todo-text { text-decoration: line-through; color: #718096; }
+
+    .todo-due-badge {
+      font-size: 0.68rem;
+      padding: 1px 7px;
+      border-radius: 10px;
+      display: inline-block;
+      width: fit-content;
+      background: #edf2f7;
+      color: #4a5568;
+    }
+    .todo-due-badge.today  { background: #ebf4ff; color: #2c5282; }
+    .todo-due-badge.overdue { background: #fff5f5; color: #e53e3e; }
+
+    .todo-due-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .todo-due-label { font-size: 0.72rem; color: #718096; white-space: nowrap; }
+    .todo-due-input {
+      flex: 1;
+      padding: 4px 8px;
+      border: 1px solid #cbd5e0;
+      border-radius: 5px;
+      font-size: 0.75rem;
+      outline: none;
+      font-family: inherit;
+      color: #4a5568;
+    }
+    .todo-due-input:focus { border-color: #4299e1; }
+
+    .byday-picker {
+      display: none;
+      padding: 6px 14px 8px;
+      background: #f0f7ff;
+      border-bottom: 1px solid #bee3f8;
+      align-items: center;
+      gap: 8px;
+    }
+    .byday-picker.visible { display: flex; }
+    .byday-picker label { font-size: 0.75rem; font-weight: 600; color: #2c5282; white-space: nowrap; }
+    .byday-picker input[type="date"] {
+      flex: 1;
+      padding: 5px 8px;
+      border: 1px solid #bee3f8;
+      border-radius: 5px;
+      font-size: 0.8rem;
+      outline: none;
+      font-family: inherit;
+      background: white;
+    }
+    .byday-picker input:focus { border-color: #4299e1; }
 
     .todo-delete {
       background: none;
@@ -652,11 +712,20 @@
                onkeydown="if(event.key==='Enter')addTodo()">
         <button class="add-todo-btn" onclick="addTodo()">+</button>
       </div>
+      <div class="todo-due-row">
+        <span class="todo-due-label">Due date:</span>
+        <input class="todo-due-input" id="todoDueInput" type="date" title="Optional due date for this task">
+      </div>
     </div>
     <div class="todo-filters">
-      <button class="filter-btn active" data-filter="all"   onclick="setFilter('all')">All</button>
-      <button class="filter-btn"        data-filter="open"  onclick="setFilter('open')">Open</button>
-      <button class="filter-btn"        data-filter="done"  onclick="setFilter('done')">Done</button>
+      <button class="filter-btn active" data-filter="all"    onclick="setFilter('all')">All</button>
+      <button class="filter-btn"        data-filter="open"   onclick="setFilter('open')">Open</button>
+      <button class="filter-btn"        data-filter="done"   onclick="setFilter('done')">Done</button>
+      <button class="filter-btn"        data-filter="byday"  onclick="setFilter('byday')">By Day</button>
+    </div>
+    <div class="byday-picker" id="bydayPicker">
+      <label>Showing:</label>
+      <input type="date" id="bydayDate" onchange="setBydayDate(this.value)">
     </div>
     <div class="todo-list" id="todoList"></div>
     <div class="todo-count" id="todoCount"></div>
@@ -747,6 +816,7 @@ let state = {
   events: [],
   todos: [],
   todoFilter: 'all',
+  todoFilterDate: '',   // set after todayStr() is available
   _color: COLORS[0],
   _editId: null
 };
@@ -1025,15 +1095,37 @@ function dayEventHtml(e) {
 function setFilter(f) {
   state.todoFilter = f;
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === f));
+  const picker = document.getElementById('bydayPicker');
+  if (f === 'byday') {
+    picker.classList.add('visible');
+    document.getElementById('bydayDate').value = state.todoFilterDate;
+    document.getElementById('todoDueInput').value = state.todoFilterDate;
+  } else {
+    picker.classList.remove('visible');
+  }
   renderTodos();
+}
+
+function setBydayDate(ds) {
+  state.todoFilterDate = ds;
+  document.getElementById('todoDueInput').value = ds;
+  renderTodos();
+}
+
+function fmtDate(ds) {
+  const [y, m, d] = ds.split('-').map(Number);
+  return `${MONTHS[m-1].slice(0,3)} ${d}`;
 }
 
 function addTodo() {
   const inp = document.getElementById('todoInput');
   const text = inp.value.trim();
   if (!text) return;
-  state.todos.push({ id: uid(), text, completed: false, createdAt: Date.now() });
+  const dueDate = document.getElementById('todoDueInput').value || '';
+  state.todos.push({ id: uid(), text, completed: false, createdAt: Date.now(), dueDate });
   inp.value = '';
+  // Keep the due date pre-filled in By Day mode; clear it otherwise
+  if (state.todoFilter !== 'byday') document.getElementById('todoDueInput').value = '';
   save();
   renderTodos();
 }
@@ -1050,30 +1142,45 @@ function deleteTodo(id) {
 }
 
 function renderTodos() {
-  const list = document.getElementById('todoList');
+  const list  = document.getElementById('todoList');
   const count = document.getElementById('todoCount');
+  const td    = todayStr();
 
   let filtered = state.todos;
-  if (state.todoFilter === 'open') filtered = filtered.filter(t => !t.completed);
-  if (state.todoFilter === 'done') filtered = filtered.filter(t => t.completed);
+  if (state.todoFilter === 'open')  filtered = filtered.filter(t => !t.completed);
+  if (state.todoFilter === 'done')  filtered = filtered.filter(t => t.completed);
+  if (state.todoFilter === 'byday') filtered = filtered.filter(t => t.dueDate === state.todoFilterDate);
 
   // Open items first, then completed
   const sorted = [...filtered.filter(t=>!t.completed), ...filtered.filter(t=>t.completed)];
 
+  const emptyMsg = {
+    done:   'No completed tasks yet.',
+    open:   'All caught up! &#127881;',
+    byday:  'No tasks for this day.<br>Add one above!'
+  }[state.todoFilter] || 'No tasks yet.<br>Add one above!';
+
   if (sorted.length === 0) {
-    list.innerHTML = `<div class="empty-todos">
-      ${state.todoFilter === 'done' ? 'No completed tasks yet.' :
-        state.todoFilter === 'open' ? 'All caught up! &#127881;' :
-        'No tasks yet.<br>Add one above!'}
-    </div>`;
+    list.innerHTML = `<div class="empty-todos">${emptyMsg}</div>`;
   } else {
-    list.innerHTML = sorted.map(t => `
+    list.innerHTML = sorted.map(t => {
+      let badge = '';
+      // Show due date badge when NOT in By Day mode (so it's informative in All/Open/Done)
+      if (t.dueDate && state.todoFilter !== 'byday') {
+        const cls   = t.dueDate < td ? 'overdue' : t.dueDate === td ? 'today' : '';
+        const label = t.dueDate === td ? 'Today' : fmtDate(t.dueDate);
+        badge = `<span class="todo-due-badge${cls ? ' '+cls : ''}">${label}</span>`;
+      }
+      return `
       <div class="todo-item${t.completed?' completed':''}">
         <input type="checkbox" class="todo-checkbox" ${t.completed?'checked':''} onchange="toggleTodo('${t.id}')">
-        <span class="todo-text">${esc(t.text)}</span>
+        <div class="todo-text-wrap">
+          <span class="todo-text">${esc(t.text)}</span>
+          ${badge}
+        </div>
         <button class="todo-delete" onclick="deleteTodo('${t.id}')" title="Remove">&#10005;</button>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   }
 
   const open = state.todos.filter(t=>!t.completed).length;
@@ -1191,6 +1298,7 @@ document.getElementById('eventModal').addEventListener('click', function(e) {
 // ═══════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════
+state.todoFilterDate = todayStr();
 load();
 setView('weekly');   // triggers render
 </script>
