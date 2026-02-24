@@ -1293,21 +1293,16 @@ function renderWeekly() {
   });
   html += `</div>`;
 
-  // All-day + tasks row
-  const hasAllDay = days.some(d => {
-    const ds = toStr(d);
-    return eventsOnDate(ds).some(e => !e.startTime) || state.todos.some(t => t.doDate === ds);
-  });
+  // All-day row
+  const hasAllDay = days.some(d => eventsOnDate(toStr(d)).some(e => !e.startTime));
   if (hasAllDay) {
     html += `<div class="week-allday-row">
-      <div class="week-allday-label">All Day/<br>Tasks</div>`;
+      <div class="week-allday-label">All Day</div>`;
     days.forEach(d => {
-      const ds = toStr(d), isT = ds === td;
-      const evs   = eventsOnDate(ds).filter(e => !e.startTime);
-      const todos = state.todos.filter(t => t.doDate === ds);
+      const ds  = toStr(d), isT = ds === td;
+      const evs = eventsOnDate(ds).filter(e => !e.startTime);
       html += `<div class="week-allday-cell${isT?' today-col':''}" onclick="openAddEventAt('${ds}','')">
         ${evs.map(e=>`<div class="week-event" style="background:${getEventColor(e)}" onclick="event.stopPropagation();openEditEvent('${e.id}')" title="${esc(e.title)}">${esc(e.title)}${e.repeat==='weekly'?' ↻':''}</div>`).join('')}
-        ${todos.map(t=>`<div class="week-todo${t.completed?' done':''}" onclick="event.stopPropagation();toggleTodo('${t.id}')" title="${esc(t.text)}">${t.completed?'&#9745;':'&#9744;'} ${esc(t.text)}</div>`).join('')}
       </div>`;
     });
     html += `</div>`;
@@ -1366,21 +1361,13 @@ function renderDaily() {
       <div class="day-event-count">${dayEvs.length} event${dayEvs.length!==1?'s':''}</div>
     </div>`;
 
-  // All-day events + tasks
-  const allDay   = dayEvs.filter(e => !e.startTime);
-  const dayTodos = state.todos.filter(t => t.doDate === ds);
-  if (allDay.length || dayTodos.length) {
-    const lbl = allDay.length && dayTodos.length ? 'All Day / Tasks'
-              : allDay.length ? 'All Day' : 'Tasks';
+  // All-day events
+  const allDay = dayEvs.filter(e => !e.startTime);
+  if (allDay.length) {
     html += `<div class="day-slot" style="flex-shrink:0;margin-bottom:6px">
-      <div class="day-slot-time" style="font-size:0.65rem">${lbl}</div>
+      <div class="day-slot-time" style="font-size:0.65rem">All Day</div>
       <div class="day-slot-content">
         ${allDay.map(e => dayEventHtml(e)).join('')}
-        ${dayTodos.map(t => `
-        <div class="day-todo${t.completed?' done':''}" onclick="toggleTodo('${t.id}')">
-          <span class="day-todo-check">${t.completed?'&#9745;':'&#9744;'}</span>
-          <span class="day-todo-title">${esc(t.text)}</span>
-        </div>`).join('')}
       </div>
     </div>`;
   }
