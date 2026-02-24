@@ -184,8 +184,10 @@
     }
     .todo-item.completed .todo-text { text-decoration: line-through; color: #718096; }
 
+    .todo-badges { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+
     .todo-due-badge {
-      font-size: 0.68rem;
+      font-size: 0.67rem;
       padding: 1px 7px;
       border-radius: 10px;
       display: inline-block;
@@ -193,22 +195,24 @@
       background: #edf2f7;
       color: #4a5568;
     }
-    .todo-due-badge.today  { background: #ebf4ff; color: #2c5282; }
+    .todo-due-badge.today   { background: #ebf4ff; color: #2c5282; }
     .todo-due-badge.overdue { background: #fff5f5; color: #e53e3e; }
+    .todo-due-badge.do-date { background: #f0fff4; color: #276749; }
 
-    .todo-due-row {
-      display: flex;
-      align-items: center;
+    .todo-date-fields {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
       gap: 6px;
       margin-top: 6px;
     }
-    .todo-due-label { font-size: 0.72rem; color: #718096; white-space: nowrap; }
+    .todo-date-field { display: flex; flex-direction: column; gap: 3px; }
+    .todo-due-label { font-size: 0.7rem; color: #718096; font-weight: 600; }
     .todo-due-input {
-      flex: 1;
-      padding: 4px 8px;
+      width: 100%;
+      padding: 4px 6px;
       border: 1px solid #cbd5e0;
       border-radius: 5px;
-      font-size: 0.75rem;
+      font-size: 0.73rem;
       outline: none;
       font-family: inherit;
       color: #4a5568;
@@ -712,9 +716,15 @@
                onkeydown="if(event.key==='Enter')addTodo()">
         <button class="add-todo-btn" onclick="addTodo()">+</button>
       </div>
-      <div class="todo-due-row">
-        <span class="todo-due-label">Due date:</span>
-        <input class="todo-due-input" id="todoDueInput" type="date" title="Optional due date for this task">
+      <div class="todo-date-fields">
+        <div class="todo-date-field">
+          <span class="todo-due-label">Do on</span>
+          <input class="todo-due-input" id="todoDoInput" type="date" title="Which day's to-do list this appears in">
+        </div>
+        <div class="todo-date-field">
+          <span class="todo-due-label">Due date</span>
+          <input class="todo-due-input" id="todoDueInput" type="date" title="The actual deadline for this task">
+        </div>
       </div>
     </div>
     <div class="todo-filters">
@@ -1099,7 +1109,7 @@ function setFilter(f) {
   if (f === 'byday') {
     picker.classList.add('visible');
     document.getElementById('bydayDate').value = state.todoFilterDate;
-    document.getElementById('todoDueInput').value = state.todoFilterDate;
+    document.getElementById('todoDoInput').value = state.todoFilterDate;
   } else {
     picker.classList.remove('visible');
   }
@@ -1108,7 +1118,7 @@ function setFilter(f) {
 
 function setBydayDate(ds) {
   state.todoFilterDate = ds;
-  document.getElementById('todoDueInput').value = ds;
+  document.getElementById('todoDoInput').value = ds;
   renderTodos();
 }
 
@@ -1121,11 +1131,13 @@ function addTodo() {
   const inp = document.getElementById('todoInput');
   const text = inp.value.trim();
   if (!text) return;
+  const doDate  = document.getElementById('todoDoInput').value  || '';
   const dueDate = document.getElementById('todoDueInput').value || '';
-  state.todos.push({ id: uid(), text, completed: false, createdAt: Date.now(), dueDate });
+  state.todos.push({ id: uid(), text, completed: false, createdAt: Date.now(), doDate, dueDate });
   inp.value = '';
-  // Keep the due date pre-filled in By Day mode; clear it otherwise
-  if (state.todoFilter !== 'byday') document.getElementById('todoDueInput').value = '';
+  // In By Day mode keep the Do On date pre-filled for quick batch entry; always clear due date
+  if (state.todoFilter !== 'byday') document.getElementById('todoDoInput').value = '';
+  document.getElementById('todoDueInput').value = '';
   save();
   renderTodos();
 }
@@ -1149,7 +1161,7 @@ function renderTodos() {
   let filtered = state.todos;
   if (state.todoFilter === 'open')  filtered = filtered.filter(t => !t.completed);
   if (state.todoFilter === 'done')  filtered = filtered.filter(t => t.completed);
-  if (state.todoFilter === 'byday') filtered = filtered.filter(t => t.dueDate === state.todoFilterDate);
+  if (state.todoFilter === 'byday') filtered = filtered.filter(t => t.doDate === state.todoFilterDate);
 
   // Open items first, then completed
   const sorted = [...filtered.filter(t=>!t.completed), ...filtered.filter(t=>t.completed)];
@@ -1157,26 +1169,31 @@ function renderTodos() {
   const emptyMsg = {
     done:   'No completed tasks yet.',
     open:   'All caught up! &#127881;',
-    byday:  'No tasks for this day.<br>Add one above!'
+    byday:  'No tasks scheduled for this day.<br>Add one above!'
   }[state.todoFilter] || 'No tasks yet.<br>Add one above!';
 
   if (sorted.length === 0) {
     list.innerHTML = `<div class="empty-todos">${emptyMsg}</div>`;
   } else {
     list.innerHTML = sorted.map(t => {
-      let badge = '';
-      // Show due date badge when NOT in By Day mode (so it's informative in All/Open/Done)
-      if (t.dueDate && state.todoFilter !== 'byday') {
+      let badges = '';
+      // "Do on" badge — show in All/Open/Done so teachers know which day they planned to work on it
+      if (t.doDate && state.todoFilter !== 'byday') {
+        const doLabel = t.doDate === td ? 'Do: Today' : `Do: ${fmtDate(t.doDate)}`;
+        badges += `<span class="todo-due-badge do-date">${doLabel}</span>`;
+      }
+      // "Due date" badge — always show when set
+      if (t.dueDate) {
         const cls   = t.dueDate < td ? 'overdue' : t.dueDate === td ? 'today' : '';
-        const label = t.dueDate === td ? 'Today' : fmtDate(t.dueDate);
-        badge = `<span class="todo-due-badge${cls ? ' '+cls : ''}">${label}</span>`;
+        const label = t.dueDate === td ? 'Due: Today' : `Due: ${fmtDate(t.dueDate)}`;
+        badges += `<span class="todo-due-badge${cls ? ' '+cls : ''}">${label}</span>`;
       }
       return `
       <div class="todo-item${t.completed?' completed':''}">
         <input type="checkbox" class="todo-checkbox" ${t.completed?'checked':''} onchange="toggleTodo('${t.id}')">
         <div class="todo-text-wrap">
           <span class="todo-text">${esc(t.text)}</span>
-          ${badge}
+          ${badges ? `<div class="todo-badges">${badges}</div>` : ''}
         </div>
         <button class="todo-delete" onclick="deleteTodo('${t.id}')" title="Remove">&#10005;</button>
       </div>`;
