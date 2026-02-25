@@ -209,6 +209,40 @@
     .todo-item.completed { opacity: 0.55; background: #f0fff4; border-color: #c6f6d5; }
     .todo-item.rolled-over { background: #fff5f5; border-color: #fed7d7; }
     .todo-item.rolled-over:hover { background: #fed7d7; border-color: #fc8181; }
+    .todo-item.editing { border-color: #4299e1; background: #ebf8ff; }
+
+    .todo-text-wrap { cursor: pointer; }
+    .todo-text-wrap:hover .todo-text { color: #2b6cb0; }
+
+    .todo-edit-text {
+      width: 100%;
+      padding: 5px 8px;
+      border: 1px solid #cbd5e0;
+      border-radius: 5px;
+      font-size: 0.83rem;
+      font-family: inherit;
+      outline: none;
+      margin-bottom: 6px;
+    }
+    .todo-edit-text:focus { border-color: #4299e1; box-shadow: 0 0 0 2px rgba(66,153,225,0.2); }
+
+    .todo-edit-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
+
+    .todo-edit-save {
+      background: #4299e1; color: white; border: none;
+      padding: 5px 12px; border-radius: 5px; cursor: pointer;
+      font-size: 0.78rem; font-weight: 600; font-family: inherit;
+      transition: background 0.18s;
+    }
+    .todo-edit-save:hover { background: #3182ce; }
+
+    .todo-edit-cancel {
+      background: #edf2f7; color: #4a5568; border: none;
+      padding: 5px 12px; border-radius: 5px; cursor: pointer;
+      font-size: 0.78rem; font-weight: 600; font-family: inherit;
+      transition: background 0.18s;
+    }
+    .todo-edit-cancel:hover { background: #e2e8f0; }
 
     .todo-checkbox {
       width: 16px;
@@ -1131,7 +1165,8 @@ let state = {
   todoFilter: 'all',
   todoFilterDate: '',   // set after todayStr() is available
   _color: COLORS[0],
-  _editId: null
+  _editId: null,
+  _editTodoId: null
 };
 
 // ═══════════════════════════════════════════
@@ -1544,6 +1579,31 @@ function deleteTodo(id) {
   renderTodos();
 }
 
+function editTodo(id) {
+  state._editTodoId = id;
+  renderTodos();
+  const el = document.getElementById('todoEditText');
+  if (el) { el.focus(); el.select(); }
+}
+
+function cancelEditTodo() {
+  state._editTodoId = null;
+  renderTodos();
+}
+
+function saveTodo(id) {
+  const t = state.todos.find(t => t.id === id);
+  if (!t) return;
+  const text = document.getElementById('todoEditText').value.trim();
+  if (!text) return;
+  t.text    = text;
+  t.doDate  = document.getElementById('todoEditDo').value;
+  t.dueDate = document.getElementById('todoEditDue').value;
+  state._editTodoId = null;
+  save();
+  renderTodos();
+}
+
 function renderTodos() {
   const list  = document.getElementById('todoList');
   const count = document.getElementById('todoCount');
@@ -1579,6 +1639,33 @@ function renderTodos() {
   } else {
     list.innerHTML = sorted.map(t => {
       const isRolledOver = rolledOverIds.has(t.id);
+
+      // ── Edit mode ──
+      if (t.id === state._editTodoId) {
+        return `
+      <div class="todo-item editing">
+        <div class="todo-text-wrap" style="cursor:default">
+          <input class="todo-edit-text" id="todoEditText" value="${esc(t.text)}"
+                 onkeydown="if(event.key==='Enter')saveTodo('${t.id}');else if(event.key==='Escape')cancelEditTodo()">
+          <div class="todo-date-fields">
+            <div class="todo-date-field">
+              <span class="todo-due-label">Do on</span>
+              <input class="todo-due-input" id="todoEditDo" type="date" value="${t.doDate || ''}">
+            </div>
+            <div class="todo-date-field">
+              <span class="todo-due-label">Due date</span>
+              <input class="todo-due-input" id="todoEditDue" type="date" value="${t.dueDate || ''}">
+            </div>
+          </div>
+          <div class="todo-edit-actions">
+            <button class="todo-edit-cancel" onclick="cancelEditTodo()">Cancel</button>
+            <button class="todo-edit-save"   onclick="saveTodo('${t.id}')">Save</button>
+          </div>
+        </div>
+      </div>`;
+      }
+
+      // ── Normal mode ──
       let badges = '';
       // Rolled-over badge — show original do-on date in red
       if (isRolledOver) {
@@ -1598,7 +1685,7 @@ function renderTodos() {
       return `
       <div class="todo-item${t.completed?' completed':''}${isRolledOver?' rolled-over':''}">
         <input type="checkbox" class="todo-checkbox" ${t.completed?'checked':''} onchange="toggleTodo('${t.id}')">
-        <div class="todo-text-wrap">
+        <div class="todo-text-wrap" onclick="editTodo('${t.id}')" title="Click to edit">
           <span class="todo-text">${esc(t.text)}</span>
           ${badges ? `<div class="todo-badges">${badges}</div>` : ''}
         </div>
