@@ -60,11 +60,51 @@
     .view-btn.active { background: white; color: #2c5282; }
     .view-btn:hover:not(.active) { background: rgba(255,255,255,0.2); color: white; }
 
+    .panel-switcher {
+      display: flex;
+      gap: 3px;
+      background: rgba(255,255,255,0.15);
+      padding: 4px;
+      border-radius: 8px;
+    }
+
+    .panel-btn {
+      background: transparent;
+      border: none;
+      color: rgba(255,255,255,0.75);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.83rem;
+      font-weight: 600;
+      transition: all 0.18s;
+    }
+    .panel-btn.active { background: white; color: #2c5282; }
+    .panel-btn:hover:not(.active) { background: rgba(255,255,255,0.2); color: white; }
+
     /* ── Layout ── */
     .main-layout {
       display: flex;
       flex: 1;
       overflow: hidden;
+    }
+    .main-layout.hide-sidebar .sidebar { display: none; }
+    .main-layout.hide-calendar .calendar-area { display: none; }
+    .main-layout.hide-calendar .sidebar {
+      width: 100%;
+      border-right: none;
+      flex-direction: row;
+    }
+    .main-layout.hide-calendar .sidebar-header {
+      width: 300px;
+      flex-shrink: 0;
+      border-bottom: none;
+      border-right: 1px solid #bee3f8;
+      overflow-y: auto;
+    }
+    .main-layout.hide-calendar .todo-main {
+      flex: 1;
+      min-width: 0;
     }
 
     /* ── Sidebar / To-Do ── */
@@ -140,6 +180,14 @@
     }
     .filter-btn.active { background: #4299e1; color: white; }
 
+    .todo-main {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      overflow: hidden;
+      min-height: 0;
+    }
+
     .todo-list {
       flex: 1;
       overflow-y: auto;
@@ -159,6 +207,8 @@
     }
     .todo-item:hover { border-color: #bee3f8; background: #ebf8ff; }
     .todo-item.completed { opacity: 0.55; background: #f0fff4; border-color: #c6f6d5; }
+    .todo-item.rolled-over { background: #fff5f5; border-color: #fed7d7; }
+    .todo-item.rolled-over:hover { background: #fed7d7; border-color: #fc8181; }
 
     .todo-checkbox {
       width: 16px;
@@ -906,10 +956,15 @@
 <!-- ═══ Header ═══ -->
 <header>
   <div class="app-title">&#128197; Agenda</div>
-  <div class="view-switcher">
+  <div class="view-switcher" id="viewSwitcher">
     <button class="view-btn" data-view="monthly" onclick="setView('monthly')">Monthly</button>
     <button class="view-btn" data-view="weekly"  onclick="setView('weekly')">Weekly</button>
     <button class="view-btn" data-view="daily"   onclick="setView('daily')">Daily</button>
+  </div>
+  <div class="panel-switcher">
+    <button class="panel-btn active" data-panel="both"     onclick="setPanelView('both')">Both</button>
+    <button class="panel-btn"        data-panel="tasks"    onclick="setPanelView('tasks')">Tasks</button>
+    <button class="panel-btn"        data-panel="calendar" onclick="setPanelView('calendar')">Calendar</button>
   </div>
 </header>
 
@@ -936,18 +991,20 @@
         </div>
       </div>
     </div>
-    <div class="todo-filters">
-      <button class="filter-btn active" data-filter="all"    onclick="setFilter('all')">All</button>
-      <button class="filter-btn"        data-filter="open"   onclick="setFilter('open')">Open</button>
-      <button class="filter-btn"        data-filter="done"   onclick="setFilter('done')">Done</button>
-      <button class="filter-btn"        data-filter="byday"  onclick="setFilter('byday')">By Day</button>
+    <div class="todo-main">
+      <div class="todo-filters">
+        <button class="filter-btn active" data-filter="all"    onclick="setFilter('all')">All</button>
+        <button class="filter-btn"        data-filter="open"   onclick="setFilter('open')">Open</button>
+        <button class="filter-btn"        data-filter="done"   onclick="setFilter('done')">Done</button>
+        <button class="filter-btn"        data-filter="byday"  onclick="setFilter('byday')">By Day</button>
+      </div>
+      <div class="byday-picker" id="bydayPicker">
+        <label>Showing:</label>
+        <input type="date" id="bydayDate" onchange="setBydayDate(this.value)">
+      </div>
+      <div class="todo-list" id="todoList"></div>
+      <div class="todo-count" id="todoCount"></div>
     </div>
-    <div class="byday-picker" id="bydayPicker">
-      <label>Showing:</label>
-      <input type="date" id="bydayDate" onchange="setBydayDate(this.value)">
-    </div>
-    <div class="todo-list" id="todoList"></div>
-    <div class="todo-count" id="todoCount"></div>
   </div>
 
   <!-- Calendar -->
@@ -1151,6 +1208,14 @@ function navigate(dir) {
 }
 
 function goToday() { state.curDate = new Date(); render(); }
+
+function setPanelView(mode) {
+  const layout = document.querySelector('.main-layout');
+  layout.classList.toggle('hide-sidebar',  mode === 'calendar');
+  layout.classList.toggle('hide-calendar', mode === 'tasks');
+  document.querySelectorAll('.panel-btn').forEach(b => b.classList.toggle('active', b.dataset.panel === mode));
+  document.getElementById('viewSwitcher').style.visibility = mode === 'tasks' ? 'hidden' : 'visible';
+}
 
 function jumpToDay(ds) {
   state.curDate = fromStr(ds);
@@ -1487,10 +1552,21 @@ function renderTodos() {
   let filtered = state.todos;
   if (state.todoFilter === 'open')  filtered = filtered.filter(t => !t.completed);
   if (state.todoFilter === 'done')  filtered = filtered.filter(t => t.completed);
-  if (state.todoFilter === 'byday') filtered = filtered.filter(t => t.doDate === state.todoFilterDate);
+  let rolledOverIds = new Set();
+  if (state.todoFilter === 'byday') {
+    const ds = state.todoFilterDate;
+    const rolledOver = state.todos.filter(t => !t.completed && t.doDate && t.doDate < ds);
+    rolledOver.forEach(t => rolledOverIds.add(t.id));
+    const dayTasks = state.todos.filter(t => t.doDate === ds);
+    filtered = [...rolledOver, ...dayTasks.filter(t => !rolledOverIds.has(t.id))];
+  }
 
-  // Open items first, then completed
-  const sorted = [...filtered.filter(t=>!t.completed), ...filtered.filter(t=>t.completed)];
+  // Rolled-over first, then open, then completed
+  const sorted = [
+    ...filtered.filter(t => rolledOverIds.has(t.id)),
+    ...filtered.filter(t => !t.completed && !rolledOverIds.has(t.id)),
+    ...filtered.filter(t => t.completed)
+  ];
 
   const emptyMsg = {
     done:   'No completed tasks yet.',
@@ -1502,7 +1578,12 @@ function renderTodos() {
     list.innerHTML = `<div class="empty-todos">${emptyMsg}</div>`;
   } else {
     list.innerHTML = sorted.map(t => {
+      const isRolledOver = rolledOverIds.has(t.id);
       let badges = '';
+      // Rolled-over badge — show original do-on date in red
+      if (isRolledOver) {
+        badges += `<span class="todo-due-badge overdue">From: ${fmtDate(t.doDate)}</span>`;
+      }
       // "Do on" badge — show in All/Open/Done so teachers know which day they planned to work on it
       if (t.doDate && state.todoFilter !== 'byday') {
         const doLabel = t.doDate === td ? 'Do: Today' : `Do: ${fmtDate(t.doDate)}`;
@@ -1515,7 +1596,7 @@ function renderTodos() {
         badges += `<span class="todo-due-badge${cls ? ' '+cls : ''}">${label}</span>`;
       }
       return `
-      <div class="todo-item${t.completed?' completed':''}">
+      <div class="todo-item${t.completed?' completed':''}${isRolledOver?' rolled-over':''}">
         <input type="checkbox" class="todo-checkbox" ${t.completed?'checked':''} onchange="toggleTodo('${t.id}')">
         <div class="todo-text-wrap">
           <span class="todo-text">${esc(t.text)}</span>
