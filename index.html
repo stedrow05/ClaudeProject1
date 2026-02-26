@@ -978,6 +978,142 @@
     .day-abs-event .abs-event-time  { font-size: 0.76rem; opacity: 0.88; margin-top: 1px; }
     .day-abs-event .abs-event-desc  { font-size: 0.74rem; opacity: 0.8; margin-top: 3px; font-weight: 400; white-space: pre-wrap; }
 
+    /* ── Todo Week View ── */
+    .todoweek-nav {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 14px 8px;
+      background: #f0f7ff;
+      border-bottom: 1px solid #bee3f8;
+    }
+    .todoweek-nav.visible { display: flex; }
+
+    .todoweek-nav-btn {
+      background: #dbeafe;
+      border: none;
+      color: #2c5282;
+      width: 26px;
+      height: 26px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+    }
+    .todoweek-nav-btn:hover { background: #bee3f8; }
+
+    .todoweek-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #2c5282;
+    }
+
+    /* ── Todo Week Columns ── */
+    .todo-week-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(90px, 1fr));
+      gap: 5px;
+      padding: 8px;
+      height: 100%;
+      box-sizing: border-box;
+      min-width: max-content;
+    }
+
+    .todo-week-col {
+      display: flex;
+      flex-direction: column;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 7px;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .todo-week-col-header {
+      padding: 6px 4px 5px;
+      text-align: center;
+      background: #ebf4ff;
+      flex-shrink: 0;
+      line-height: 1.3;
+    }
+    .todo-week-col-header.today { background: #4299e1; color: white; }
+
+    .todo-week-col-day {
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: #2c5282;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .todo-week-col-header.today .todo-week-col-day { color: white; }
+
+    .todo-week-col-date {
+      font-size: 0.68rem;
+      color: #718096;
+    }
+    .todo-week-col-header.today .todo-week-col-date { color: rgba(255,255,255,0.85); }
+
+    .todo-week-count {
+      font-size: 0.62rem;
+      background: #bee3f8;
+      color: #2c5282;
+      padding: 1px 6px;
+      border-radius: 10px;
+      display: inline-block;
+      margin-top: 3px;
+    }
+    .todo-week-col-header.today .todo-week-count {
+      background: rgba(255,255,255,0.3);
+      color: white;
+    }
+
+    .todo-week-col-tasks {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-height: 0;
+    }
+
+    .week-todo-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 4px;
+      padding: 5px 5px;
+      border-radius: 5px;
+      background: #f7fafc;
+      border: 1px solid #e2e8f0;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .week-todo-item:hover { border-color: #bee3f8; background: #ebf8ff; }
+    .week-todo-item.completed { opacity: 0.5; background: #f0fff4; border-color: #c6f6d5; }
+    .week-todo-item.rolled-over { background: #fff5f5; border-color: #fed7d7; }
+
+    .week-todo-item-cb { flex-shrink: 0; accent-color: #48bb78; margin-top: 2px; width: 13px; height: 13px; }
+
+    .week-todo-item-text {
+      flex: 1;
+      font-size: 0.72rem;
+      line-height: 1.35;
+      word-break: break-word;
+      color: #2d3748;
+    }
+    .week-todo-item.completed .week-todo-item-text { text-decoration: line-through; color: #a0aec0; }
+
+    .todo-week-col-empty {
+      font-size: 0.72rem;
+      color: #cbd5e0;
+      text-align: center;
+      padding: 8px 4px;
+      font-style: italic;
+    }
+
     /* ── Scrollbars ── */
     ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: #f1f5f9; }
@@ -1031,6 +1167,12 @@
         <button class="filter-btn"        data-filter="open"   onclick="setFilter('open')">Open</button>
         <button class="filter-btn"        data-filter="done"   onclick="setFilter('done')">Done</button>
         <button class="filter-btn"        data-filter="byday"  onclick="setFilter('byday')">By Day</button>
+        <button class="filter-btn"        data-filter="week"   onclick="setFilter('week')">Week</button>
+      </div>
+      <div class="todoweek-nav" id="todoweekNav">
+        <button class="todoweek-nav-btn" onclick="navigateTodoWeek(-1)">&#8249;</button>
+        <span class="todoweek-label" id="todoweekLabel"></span>
+        <button class="todoweek-nav-btn" onclick="navigateTodoWeek(1)">&#8250;</button>
       </div>
       <div class="byday-picker" id="bydayPicker">
         <label>Showing:</label>
@@ -1166,7 +1308,8 @@ let state = {
   todoFilterDate: '',   // set after todayStr() is available
   _color: COLORS[0],
   _editId: null,
-  _editTodoId: null
+  _editTodoId: null,
+  todoWeekOffset: 0
 };
 
 // ═══════════════════════════════════════════
@@ -1531,13 +1674,20 @@ function dayEventHtml(e) {
 function setFilter(f) {
   state.todoFilter = f;
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === f));
-  const picker = document.getElementById('bydayPicker');
+  const picker  = document.getElementById('bydayPicker');
+  const weekNav = document.getElementById('todoweekNav');
   if (f === 'byday') {
     picker.classList.add('visible');
     document.getElementById('bydayDate').value = state.todoFilterDate;
     document.getElementById('todoDoInput').value = state.todoFilterDate;
   } else {
     picker.classList.remove('visible');
+  }
+  if (f === 'week') {
+    weekNav.classList.add('visible');
+    updateTodoWeekNav();
+  } else {
+    weekNav.classList.remove('visible');
   }
   renderTodos();
 }
@@ -1546,6 +1696,94 @@ function setBydayDate(ds) {
   state.todoFilterDate = ds;
   document.getElementById('todoDoInput').value = ds;
   renderTodos();
+}
+
+function todoWeekMonday(offset) {
+  const today = new Date();
+  const day = today.getDay();
+  const diff = day === 0 ? -6 : 1 - day; // back to Monday
+  const monday = new Date(today);
+  monday.setDate(monday.getDate() + diff + offset * 7);
+  return monday;
+}
+
+function navigateTodoWeek(dir) {
+  state.todoWeekOffset = (state.todoWeekOffset || 0) + dir;
+  updateTodoWeekNav();
+  renderTodos();
+}
+
+function updateTodoWeekNav() {
+  const nav = document.getElementById('todoweekNav');
+  if (!nav) return;
+  const monday = todoWeekMonday(state.todoWeekOffset || 0);
+  const sunday = new Date(monday); sunday.setDate(sunday.getDate() + 6);
+  const sm = MONTHS[monday.getMonth()].slice(0,3);
+  const em = MONTHS[sunday.getMonth()].slice(0,3);
+  const label = monday.getMonth() === sunday.getMonth()
+    ? `${sm} ${monday.getDate()}–${sunday.getDate()}`
+    : `${sm} ${monday.getDate()} – ${em} ${sunday.getDate()}`;
+  document.getElementById('todoweekLabel').textContent = label;
+}
+
+function renderTodoWeek(list, count) {
+  const td = todayStr();
+  const monday = todoWeekMonday(state.todoWeekOffset || 0);
+  const days = Array.from({length:7}, (_, i) => {
+    const d = new Date(monday); d.setDate(d.getDate() + i); return d;
+  });
+
+  // Switch list to horizontal scroll mode for column layout
+  list.style.padding = '0';
+  list.style.overflowX = 'auto';
+
+  let html = '<div class="todo-week-grid">';
+  days.forEach(d => {
+    const ds = toStr(d);
+    const isToday = ds === td;
+
+    const dayTasks = state.todos.filter(t => t.doDate === ds);
+    let rolledOver = [];
+    if (isToday) {
+      rolledOver = state.todos.filter(t => !t.completed && t.doDate && t.doDate < td);
+    }
+    const rolledOverIds = new Set(rolledOver.map(t => t.id));
+    const combined = [...rolledOver, ...dayTasks.filter(t => !rolledOverIds.has(t.id))];
+    const sorted = [
+      ...combined.filter(t => rolledOverIds.has(t.id)),
+      ...combined.filter(t => !t.completed && !rolledOverIds.has(t.id)),
+      ...combined.filter(t => t.completed)
+    ];
+
+    html += `<div class="todo-week-col">
+      <div class="todo-week-col-header${isToday?' today':''}">
+        <div class="todo-week-col-day">${DAYS_S[d.getDay()]}</div>
+        <div class="todo-week-col-date">${MONTHS[d.getMonth()].slice(0,3)} ${d.getDate()}</div>
+        ${sorted.length > 0 ? `<div class="todo-week-count">${sorted.length}</div>` : ''}
+      </div>
+      <div class="todo-week-col-tasks">`;
+
+    if (sorted.length === 0) {
+      html += `<div class="todo-week-col-empty">—</div>`;
+    } else {
+      sorted.forEach(t => {
+        const isRolledOver = rolledOverIds.has(t.id);
+        html += `<div class="week-todo-item${t.completed?' completed':''}${isRolledOver?' rolled-over':''}"
+          onclick="editTodo('${t.id}')" title="${esc(t.text)}">
+          <input type="checkbox" class="week-todo-item-cb" ${t.completed?'checked':''}
+            onclick="event.stopPropagation()" onchange="toggleTodo('${t.id}')">
+          <span class="week-todo-item-text">${esc(t.text)}</span>
+        </div>`;
+      });
+    }
+    html += `</div></div>`;
+  });
+  html += '</div>';
+
+  list.innerHTML = html;
+  const open = state.todos.filter(t => !t.completed).length;
+  const done = state.todos.filter(t =>  t.completed).length;
+  count.textContent = `${open} open · ${done} done`;
 }
 
 function fmtDate(ds) {
@@ -1608,6 +1846,12 @@ function renderTodos() {
   const list  = document.getElementById('todoList');
   const count = document.getElementById('todoCount');
   const td    = todayStr();
+
+  if (state.todoFilter === 'week') { renderTodoWeek(list, count); return; }
+
+  // Restore normal list styling when not in week view
+  list.style.padding = '';
+  list.style.overflowX = '';
 
   let filtered = state.todos;
   if (state.todoFilter === 'open')  filtered = filtered.filter(t => !t.completed);
