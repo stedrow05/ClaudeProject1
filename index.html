@@ -1235,7 +1235,7 @@ function setView(v) {
 
 function navigate(dir) {
   const d = new Date(state.curDate);
-  if (state.view === 'monthly')     d.setMonth(d.getMonth() + dir);
+  if (state.view === 'monthly')     { d.setDate(1); d.setMonth(d.getMonth() + dir); }
   else if (state.view === 'weekly') d.setDate(d.getDate() + dir*7);
   else                              d.setDate(d.getDate() + dir);
   state.curDate = d;
