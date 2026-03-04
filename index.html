@@ -1119,6 +1119,47 @@
     ::-webkit-scrollbar-track { background: #f1f5f9; }
     ::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: #a0aec0; }
+
+    /* ── Toast Notifications ── */
+    #toast-container {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .toast {
+      background: #2d3748;
+      color: white;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 0.84rem;
+      line-height: 1.4;
+      max-width: 300px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      pointer-events: auto;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      animation: toast-in 0.25s ease-out;
+    }
+    .toast-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .toast-body { flex: 1; min-width: 0; }
+    .toast-title { font-weight: 700; margin-bottom: 2px; }
+    .toast-sub   { font-size: 0.76rem; opacity: 0.8; }
+    .toast-close {
+      background: none; border: none; color: rgba(255,255,255,0.6);
+      cursor: pointer; font-size: 0.9rem; padding: 0; line-height: 1;
+      flex-shrink: 0; transition: color 0.15s;
+    }
+    .toast-close:hover { color: white; }
+    @keyframes toast-in {
+      from { transform: translateX(110%); opacity: 0; }
+      to   { transform: translateX(0);    opacity: 1; }
+    }
   </style>
 </head>
 <body>
@@ -1151,9 +1192,13 @@
         <button class="add-todo-btn" onclick="addTodo()">+</button>
       </div>
       <div class="todo-date-fields">
-        <div class="todo-date-field">
+        <div class="todo-date-field" style="grid-column:1/-1">
           <span class="todo-due-label">Do on</span>
           <input class="todo-due-input" id="todoDoInput" type="date" title="Which day's to-do list this appears in">
+        </div>
+        <div class="todo-date-field">
+          <span class="todo-due-label">Due time</span>
+          <input class="todo-due-input" id="todoDueTimeInput" type="time" title="Time reminder will fire 30 min before">
         </div>
         <div class="todo-date-field">
           <span class="todo-due-label">Due date</span>
@@ -1197,6 +1242,8 @@
     <div class="calendar-content" id="calendarContent"></div>
   </div>
 </div>
+
+<div id="toast-container"></div>
 
 <!-- ═══ Event Modal ═══ -->
 <div class="modal-overlay" id="eventModal">
@@ -1281,6 +1328,7 @@
 //  CONSTANTS
 // ═══════════════════════════════════════════
 const COLORS = ['#4299e1','#48bb78','#ed8936','#e53e3e','#9f7aea','#38b2ac','#f6ad55','#667eea'];
+const firedReminders = new Set(); // "ev-{id}-YYYY-MM-DD" | "todo-{id}-YYYY-MM-DD"
 
 const DEFAULT_CATEGORIES = [
   { id: 'c1', name: 'Lesson',         color: '#4299e1' },
@@ -1768,11 +1816,58 @@ function renderTodoWeek(list, count) {
     } else {
       sorted.forEach(t => {
         const isRolledOver = rolledOverIds.has(t.id);
+
+        // ── Edit mode ──
+        if (t.id === state._editTodoId) {
+          html += `<div class="week-todo-item" style="flex-direction:column;align-items:stretch;cursor:default;border-color:#4299e1;background:#ebf8ff">
+            <input class="todo-edit-text" id="todoEditText" value="${esc(t.text)}"
+                   onkeydown="if(event.key==='Enter')saveTodo('${t.id}');else if(event.key==='Escape')cancelEditTodo()">
+            <div class="todo-date-fields">
+              <div class="todo-date-field" style="grid-column:1/-1">
+                <span class="todo-due-label">Do on</span>
+                <input class="todo-due-input" id="todoEditDo" type="date" value="${t.doDate || ''}">
+              </div>
+              <div class="todo-date-field">
+                <span class="todo-due-label">Due time</span>
+                <input class="todo-due-input" id="todoEditDueTime" type="time" value="${t.dueTime || ''}">
+              </div>
+              <div class="todo-date-field">
+                <span class="todo-due-label">Due date</span>
+                <input class="todo-due-input" id="todoEditDue" type="date" value="${t.dueDate || ''}">
+              </div>
+            </div>
+            <div class="todo-edit-actions">
+              <button class="todo-edit-cancel" onclick="cancelEditTodo()">Cancel</button>
+              <button class="todo-edit-save"   onclick="saveTodo('${t.id}')">Save</button>
+            </div>
+          </div>`;
+          return;
+        }
+
+        // ── Normal mode ──
+        let badges = '';
+        if (isRolledOver) {
+          badges += `<span class="todo-due-badge overdue">From: ${fmtDate(t.doDate)}</span>`;
+        }
+        if (t.dueDate) {
+          const cls = t.dueDate < td ? 'overdue' : t.dueDate === td ? 'today' : '';
+          let label;
+          if (t.dueDate === td) {
+            label = t.dueTime ? `Due: Today, ${fmtTime(t.dueTime)}` : 'Due: Today';
+          } else {
+            label = t.dueTime ? `Due: ${fmtDate(t.dueDate)}, ${fmtTime(t.dueTime)}` : `Due: ${fmtDate(t.dueDate)}`;
+          }
+          badges += `<span class="todo-due-badge${cls ? ' '+cls : ''}">${label}</span>`;
+        }
+
         html += `<div class="week-todo-item${t.completed?' completed':''}${isRolledOver?' rolled-over':''}"
           onclick="editTodo('${t.id}')" title="${esc(t.text)}">
           <input type="checkbox" class="week-todo-item-cb" ${t.completed?'checked':''}
             onclick="event.stopPropagation()" onchange="toggleTodo('${t.id}')">
-          <span class="week-todo-item-text">${esc(t.text)}</span>
+          <div style="flex:1;min-width:0">
+            <span class="week-todo-item-text">${esc(t.text)}</span>
+            ${badges ? `<div class="todo-badges">${badges}</div>` : ''}
+          </div>
         </div>`;
       });
     }
@@ -1797,11 +1892,13 @@ function addTodo() {
   if (!text) return;
   const doDate  = document.getElementById('todoDoInput').value  || '';
   const dueDate = document.getElementById('todoDueInput').value || '';
-  state.todos.push({ id: uid(), text, completed: false, createdAt: Date.now(), doDate, dueDate });
+  const dueTime = document.getElementById('todoDueTimeInput').value || '';
+  state.todos.push({ id: uid(), text, completed: false, createdAt: Date.now(), doDate, dueDate, dueTime });
   inp.value = '';
   // In By Day mode keep the Do On date pre-filled for quick batch entry; always clear due date
   if (state.todoFilter !== 'byday') document.getElementById('todoDoInput').value = '';
   document.getElementById('todoDueInput').value = '';
+  document.getElementById('todoDueTimeInput').value = '';
   save();
   renderTodos();
 }
@@ -1837,6 +1934,7 @@ function saveTodo(id) {
   t.text    = text;
   t.doDate  = document.getElementById('todoEditDo').value;
   t.dueDate = document.getElementById('todoEditDue').value;
+  t.dueTime = document.getElementById('todoEditDueTime').value;
   state._editTodoId = null;
   save();
   renderTodos();
@@ -1892,9 +1990,13 @@ function renderTodos() {
           <input class="todo-edit-text" id="todoEditText" value="${esc(t.text)}"
                  onkeydown="if(event.key==='Enter')saveTodo('${t.id}');else if(event.key==='Escape')cancelEditTodo()">
           <div class="todo-date-fields">
-            <div class="todo-date-field">
+            <div class="todo-date-field" style="grid-column:1/-1">
               <span class="todo-due-label">Do on</span>
               <input class="todo-due-input" id="todoEditDo" type="date" value="${t.doDate || ''}">
+            </div>
+            <div class="todo-date-field">
+              <span class="todo-due-label">Due time</span>
+              <input class="todo-due-input" id="todoEditDueTime" type="time" value="${t.dueTime || ''}">
             </div>
             <div class="todo-date-field">
               <span class="todo-due-label">Due date</span>
@@ -1922,8 +2024,13 @@ function renderTodos() {
       }
       // "Due date" badge — always show when set
       if (t.dueDate) {
-        const cls   = t.dueDate < td ? 'overdue' : t.dueDate === td ? 'today' : '';
-        const label = t.dueDate === td ? 'Due: Today' : `Due: ${fmtDate(t.dueDate)}`;
+        const cls = t.dueDate < td ? 'overdue' : t.dueDate === td ? 'today' : '';
+        let label;
+        if (t.dueDate === td) {
+          label = t.dueTime ? `Due: Today, ${fmtTime(t.dueTime)}` : 'Due: Today';
+        } else {
+          label = t.dueTime ? `Due: ${fmtDate(t.dueDate)}, ${fmtTime(t.dueTime)}` : `Due: ${fmtDate(t.dueDate)}`;
+        }
         badges += `<span class="todo-due-badge${cls ? ' '+cls : ''}">${label}</span>`;
       }
       return `
@@ -1941,6 +2048,74 @@ function renderTodos() {
   const open = state.todos.filter(t=>!t.completed).length;
   const done = state.todos.filter(t=>t.completed).length;
   count.textContent = `${open} open · ${done} done`;
+}
+
+// ═══════════════════════════════════════════
+//  REMINDERS
+// ═══════════════════════════════════════════
+function showToast(title, sub) {
+  const container = document.getElementById('toast-container');
+  const id = 'toast-' + Date.now();
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.id = id;
+  el.innerHTML = `
+    <span class="toast-icon">&#128276;</span>
+    <div class="toast-body">
+      <div class="toast-title">${esc(title)}</div>
+      ${sub ? `<div class="toast-sub">${esc(sub)}</div>` : ''}
+    </div>
+    <button class="toast-close" onclick="document.getElementById('${id}').remove()" title="Dismiss">&#10005;</button>`;
+  container.appendChild(el);
+  setTimeout(() => {
+    if (document.getElementById(id)) {
+      el.style.transition = 'opacity 0.4s';
+      el.style.opacity = '0';
+      setTimeout(() => el.remove(), 400);
+    }
+  }, 5000);
+}
+
+function fireNotification(title, body) {
+  showToast(title, body);
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    try { new Notification(title, { body }); } catch(e) {}
+  }
+}
+
+function checkReminders() {
+  const now   = new Date();
+  const nowMs = now.getTime();
+  const td    = todayStr();
+
+  // Events — 30 min before startTime
+  eventsOnDate(td).forEach(ev => {
+    if (!ev.startTime) return;
+    const key = `ev-${ev.id}-${td}`;
+    if (firedReminders.has(key)) return;
+    const [h, m] = ev.startTime.split(':').map(Number);
+    const startMs    = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m).getTime();
+    const reminderMs = startMs - 30 * 60 * 1000;
+    if (nowMs >= reminderMs && nowMs < startMs) {
+      firedReminders.add(key);
+      fireNotification(`Upcoming: ${ev.title}`, `Starts at ${fmtTime(ev.startTime)} — in about 30 min`);
+    }
+  });
+
+  // Todos — 30 min before dueTime on dueDate
+  state.todos.forEach(todo => {
+    if (!todo.dueDate || !todo.dueTime || todo.completed) return;
+    if (todo.dueDate !== td) return;
+    const key = `todo-${todo.id}-${td}`;
+    if (firedReminders.has(key)) return;
+    const [h, m] = todo.dueTime.split(':').map(Number);
+    const dueMs      = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m).getTime();
+    const reminderMs = dueMs - 30 * 60 * 1000;
+    if (nowMs >= reminderMs && nowMs < dueMs) {
+      firedReminders.add(key);
+      fireNotification(`Task due soon: ${todo.text}`, `Due at ${fmtTime(todo.dueTime)} — in about 30 min`);
+    }
+  });
 }
 
 // ═══════════════════════════════════════════
@@ -2167,6 +2342,14 @@ document.getElementById('categoryModal').addEventListener('click', function(e) {
 state.todoFilterDate = todayStr();
 load();
 setView('weekly');   // triggers render
+
+// Request browser notification permission
+if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+  Notification.requestPermission();
+}
+// Reminder polling — check every 30 seconds
+checkReminders();
+setInterval(checkReminders, 30000);
 </script>
 </body>
 </html>
