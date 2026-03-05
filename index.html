@@ -1164,6 +1164,11 @@
     /* ── Mobile tabs (hidden on desktop, shown via media query) ── */
     .mobile-tabs { display: none; }
 
+    /* ── Mobile add-task elements (hidden on desktop) ── */
+    .add-task-panel-title { display: none; }
+    .add-task-backdrop { display: none; }
+    .add-task-fab { display: none; }
+
     /* ── Mobile responsive ── */
     @supports (height: 100dvh) {
       body { height: 100dvh; }
@@ -1262,6 +1267,105 @@
       /* Toast */
       #toast-container { bottom: 12px; right: 12px; left: 12px; }
       .toast { max-width: 100%; }
+
+      /* Add-task slide panel */
+      .sidebar-header {
+        position: fixed;
+        top: 0;
+        right: -100%;
+        width: min(100%, 360px);
+        height: 100%;
+        z-index: 150;
+        transition: right 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+        padding: 20px 16px 28px;
+        box-shadow: -4px 0 24px rgba(0,0,0,0.18);
+        border-bottom: none;
+        overflow-y: auto;
+      }
+      .sidebar-header.mobile-open { right: 0; }
+      .sidebar-header h2 { display: none; }
+
+      /* Backdrop behind slide panel */
+      .add-task-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.3);
+        z-index: 140;
+      }
+      .add-task-backdrop.visible { display: block; }
+
+      /* Floating action button */
+      .add-task-fab {
+        position: fixed;
+        bottom: 24px;
+        right: 20px;
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        background: #4299e1;
+        color: white;
+        border: none;
+        font-size: 1.7rem;
+        line-height: 1;
+        cursor: pointer;
+        box-shadow: 0 4px 14px rgba(66,153,225,0.55);
+        z-index: 100;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.18s, transform 0.18s;
+      }
+      .add-task-fab.visible { display: flex; }
+      .add-task-fab:active { transform: scale(0.93); }
+
+      /* Panel header row */
+      .add-task-panel-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 14px;
+      }
+      .add-task-panel-title span {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #2c5282;
+      }
+      .add-task-close-btn {
+        background: none;
+        border: none;
+        font-size: 1.3rem;
+        color: #718096;
+        cursor: pointer;
+        padding: 4px 6px;
+        border-radius: 4px;
+        line-height: 1;
+        transition: color 0.15s;
+        min-height: 44px;
+        min-width: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .add-task-close-btn:hover { color: #e53e3e; }
+
+      /* Full-width add button inside the panel */
+      .add-todo-btn-mobile {
+        width: 100%;
+        margin-top: 14px;
+        padding: 12px;
+        background: #4299e1;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 0.18s;
+      }
+      .add-todo-btn-mobile:hover { background: #3182ce; }
+      /* Hide the small + button inside the panel on mobile (full-width btn replaces it) */
+      .add-todo-btn { display: none; }
     }
   </style>
 </head>
@@ -1557,6 +1661,48 @@ function initMobileTabs() {
     `<button class="mobile-tab-btn active" data-tab="calendar" onclick="setMobileTab('calendar')">&#128197; Calendar</button>` +
     `<button class="mobile-tab-btn"        data-tab="tasks"    onclick="setMobileTab('tasks')">&#10003; Tasks</button>`;
   header.appendChild(tabs);
+
+  // Inject panel title + close button into sidebar-header (shown only on mobile)
+  const panelTitle = document.createElement('div');
+  panelTitle.className = 'add-task-panel-title';
+  panelTitle.innerHTML =
+    `<span>&#10003; Add Task</span>` +
+    `<button class="add-task-close-btn" onclick="closeMobileAddTask()">&#10005;</button>`;
+  document.querySelector('.sidebar-header').prepend(panelTitle);
+
+  // Full-width "Add Task" button inside the panel (replaces the small + button on mobile)
+  const addBtn = document.createElement('button');
+  addBtn.className = 'add-todo-btn-mobile';
+  addBtn.textContent = 'Add Task';
+  addBtn.onclick = () => { addTodo(); if (isMobile()) closeMobileAddTask(); };
+  document.querySelector('.sidebar-header').appendChild(addBtn);
+
+  // Backdrop
+  const backdrop = document.createElement('div');
+  backdrop.className = 'add-task-backdrop';
+  backdrop.id = 'addTaskBackdrop';
+  backdrop.onclick = closeMobileAddTask;
+  document.body.appendChild(backdrop);
+
+  // FAB
+  const fab = document.createElement('button');
+  fab.className = 'add-task-fab';
+  fab.id = 'addTaskFab';
+  fab.innerHTML = '+';
+  fab.setAttribute('aria-label', 'Add task');
+  fab.onclick = openMobileAddTask;
+  document.body.appendChild(fab);
+}
+
+function openMobileAddTask() {
+  document.querySelector('.sidebar-header').classList.add('mobile-open');
+  document.getElementById('addTaskBackdrop').classList.add('visible');
+  document.getElementById('todoInput').focus();
+}
+
+function closeMobileAddTask() {
+  document.querySelector('.sidebar-header').classList.remove('mobile-open');
+  document.getElementById('addTaskBackdrop').classList.remove('visible');
 }
 
 function setMobileTab(tab) {
@@ -1571,6 +1717,11 @@ function setMobileTab(tab) {
   document.querySelectorAll('.panel-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.panel === tab);
   });
+  // FAB visibility
+  const fab = document.getElementById('addTaskFab');
+  if (fab) fab.classList.toggle('visible', tab === 'tasks');
+  // Close the add-task panel if switching away from tasks
+  if (tab !== 'tasks') closeMobileAddTask();
 }
 
 function jumpToDay(ds) {
