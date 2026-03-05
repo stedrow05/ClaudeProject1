@@ -1499,7 +1499,7 @@ function onRepeatChange() {
 
 function evTopPx(ev, hourPx) {
   const [h, m] = ev.startTime.split(':').map(Number);
-  return ((h - HOURS[0]) + m / 60) * hourPx;
+  return Math.max(0, ((h - HOURS[0]) + m / 60) * hourPx);
 }
 
 function evHeightPx(ev, hourPx) {
@@ -1764,7 +1764,7 @@ function navigateTodoWeek(dir) {
 function updateTodoWeekNav() {
   const nav = document.getElementById('todoweekNav');
   if (!nav) return;
-  const monday = todoWeekMonday(state.todoWeekOffset || 0);
+  const monday = todoWeekMonday(state.todoWeekOffset);
   const sunday = new Date(monday); sunday.setDate(sunday.getDate() + 6);
   const sm = MONTHS[monday.getMonth()].slice(0,3);
   const em = MONTHS[sunday.getMonth()].slice(0,3);
@@ -1776,7 +1776,7 @@ function updateTodoWeekNav() {
 
 function renderTodoWeek(list, count) {
   const td = todayStr();
-  const monday = todoWeekMonday(state.todoWeekOffset || 0);
+  const monday = todoWeekMonday(state.todoWeekOffset);
   const days = Array.from({length:7}, (_, i) => {
     const d = new Date(monday); d.setDate(d.getDate() + i); return d;
   });
@@ -2088,6 +2088,9 @@ function checkReminders() {
   const nowMs = now.getTime();
   const td    = todayStr();
 
+  // Prune keys from previous days to prevent unbounded growth
+  firedReminders.forEach(k => { if (!k.endsWith(td)) firedReminders.delete(k); });
+
   // Events — 30 min before startTime
   eventsOnDate(td).forEach(ev => {
     if (!ev.startTime) return;
@@ -2158,7 +2161,7 @@ function closeCategoryModal() {
   document.getElementById('categoryModal').classList.remove('open');
   // Refresh the category select in the event modal if it's open
   const evCat = document.getElementById('evCategory');
-  if (evCat) evCat.innerHTML = buildCategoryOptions(evCat.dataset.selected || '');
+  if (evCat) evCat.innerHTML = buildCategoryOptions(evCat.value || '');
 }
 
 function renderCategoryManager() {
@@ -2225,7 +2228,7 @@ function buildColorSwatches(sel) {
 function pickColor(c) {
   state._color = c;
   document.querySelectorAll('.color-swatch').forEach(s => {
-    s.classList.toggle('selected', s.style.background === c || s.style.backgroundColor === hexRgb(c));
+    s.classList.toggle('selected', s.style.backgroundColor === hexRgb(c));
   });
 }
 
