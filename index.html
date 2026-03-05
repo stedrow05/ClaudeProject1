@@ -1160,6 +1160,109 @@
       from { transform: translateX(110%); opacity: 0; }
       to   { transform: translateX(0);    opacity: 1; }
     }
+
+    /* ── Mobile tabs (hidden on desktop, shown via media query) ── */
+    .mobile-tabs { display: none; }
+
+    /* ── Mobile responsive ── */
+    @supports (height: 100dvh) {
+      body { height: 100dvh; }
+    }
+
+    @media (max-width: 767px) {
+      /* Header */
+      header {
+        padding: 8px 12px;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+      }
+      .app-title { font-size: 1.1rem; }
+      .panel-switcher { display: none; }
+      .view-btn { padding: 7px 12px; min-height: 40px; }
+
+      /* Mobile tab bar */
+      .mobile-tabs {
+        display: flex;
+        width: 100%;
+        order: 3;
+        background: rgba(255,255,255,0.12);
+        border-radius: 8px;
+        padding: 3px;
+        gap: 3px;
+      }
+      .mobile-tab-btn {
+        flex: 1;
+        background: transparent;
+        border: none;
+        color: rgba(255,255,255,0.75);
+        padding: 7px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.83rem;
+        font-weight: 600;
+        transition: all 0.18s;
+        min-height: 40px;
+      }
+      .mobile-tab-btn.active { background: white; color: #2c5282; }
+
+      /* Calendar nav */
+      .cal-nav { padding: 8px 10px; }
+      .cal-nav-title { font-size: 0.88rem; min-width: 0; flex: 1; text-align: center; padding: 0 4px; }
+      .nav-btn { width: 40px; height: 40px; font-size: 1.2rem; }
+      .today-btn { padding: 7px 10px; font-size: 0.78rem; min-height: 40px; }
+      .add-event-btn { padding: 7px 10px; font-size: 0.8rem; min-height: 40px; }
+      .calendar-content { padding: 6px; }
+
+      /* Sidebar full-width on mobile */
+      .sidebar { width: 100%; border-right: none; }
+
+      /* Monthly view */
+      .month-cell { min-height: 56px; padding: 3px; }
+      .cell-day-num { font-size: 0.75rem; width: 20px; height: 20px; margin-bottom: 2px; }
+      .cell-events { max-height: 28px; }
+      .cell-event { font-size: 0.65rem; padding: 1px 3px; }
+
+      /* Daily view — narrower time gutter */
+      .day-time-gutter { width: 44px; }
+      .day-slot { grid-template-columns: 44px 1fr; }
+      .day-slot-time { font-size: 0.65rem; }
+      .wt-label { font-size: 0.6rem; right: 2px; }
+      .day-abs-event { left: 4px; right: 4px; padding: 4px 6px; font-size: 0.78rem; }
+      .day-abs-event .abs-event-title { font-size: 0.78rem; }
+      .day-abs-event .abs-event-time  { font-size: 0.67rem; }
+      .big-date { font-size: 1.1rem; }
+      .day-name-full { font-size: 0.8rem; }
+
+      /* Weekly grid — defensive (mobile uses daily render) */
+      .week-grid { min-width: unset; }
+
+      /* Modals — bottom sheet */
+      .modal-overlay { align-items: flex-end; }
+      .modal {
+        width: 100%;
+        max-width: 100%;
+        border-radius: 16px 16px 0 0;
+        padding: 18px 16px;
+        max-height: 90dvh;
+        overflow-y: auto;
+      }
+      .form-row { grid-template-columns: 1fr; gap: 0; }
+      .modal-actions { flex-wrap: wrap; gap: 6px; }
+      .btn { padding: 10px 16px; min-height: 44px; }
+
+      /* Sidebar todo inputs */
+      .filter-btn { min-height: 40px; padding: 6px 8px; font-size: 0.75rem; }
+      .todo-item { padding: 11px 10px; }
+      .todo-checkbox { width: 20px; height: 20px; }
+
+      /* Todo week grid on mobile */
+      .todo-week-grid { grid-template-columns: repeat(7, minmax(70px, 1fr)); min-width: unset; }
+
+      /* Toast */
+      #toast-container { bottom: 12px; right: 12px; left: 12px; }
+      .toast { max-width: 100%; }
+    }
   </style>
 </head>
 <body>
@@ -1343,6 +1446,8 @@ const DAYS_S = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const DAYS_L = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const HOURS  = Array.from({length:15}, (_,i) => i + 7); // 7am–9pm
 
+function isMobile() { return window.innerWidth < 768; }
+
 // ═══════════════════════════════════════════
 //  STATE
 // ═══════════════════════════════════════════
@@ -1427,7 +1532,7 @@ function setView(v) {
 function navigate(dir) {
   const d = new Date(state.curDate);
   if (state.view === 'monthly')     { d.setDate(1); d.setMonth(d.getMonth() + dir); }
-  else if (state.view === 'weekly') d.setDate(d.getDate() + dir*7);
+  else if (state.view === 'weekly') d.setDate(d.getDate() + dir * (isMobile() ? 1 : 7));
   else                              d.setDate(d.getDate() + dir);
   state.curDate = d;
   render();
@@ -1441,6 +1546,31 @@ function setPanelView(mode) {
   layout.classList.toggle('hide-calendar', mode === 'tasks');
   document.querySelectorAll('.panel-btn').forEach(b => b.classList.toggle('active', b.dataset.panel === mode));
   document.getElementById('viewSwitcher').style.visibility = mode === 'tasks' ? 'hidden' : 'visible';
+}
+
+function initMobileTabs() {
+  const header = document.querySelector('header');
+  const tabs = document.createElement('div');
+  tabs.className = 'mobile-tabs';
+  tabs.id = 'mobileTabs';
+  tabs.innerHTML =
+    `<button class="mobile-tab-btn active" data-tab="calendar" onclick="setMobileTab('calendar')">&#128197; Calendar</button>` +
+    `<button class="mobile-tab-btn"        data-tab="tasks"    onclick="setMobileTab('tasks')">&#10003; Tasks</button>`;
+  header.appendChild(tabs);
+}
+
+function setMobileTab(tab) {
+  document.querySelectorAll('.mobile-tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  const layout = document.querySelector('.main-layout');
+  layout.classList.toggle('hide-sidebar',  tab === 'calendar');
+  layout.classList.toggle('hide-calendar', tab === 'tasks');
+  document.getElementById('viewSwitcher').style.visibility = tab === 'tasks' ? 'hidden' : 'visible';
+  // Sync desktop panel buttons
+  document.querySelectorAll('.panel-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.panel === tab);
+  });
 }
 
 function jumpToDay(ds) {
@@ -1466,12 +1596,16 @@ function updateNavTitle() {
   if (state.view === 'monthly') {
     t = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
   } else if (state.view === 'weekly') {
-    const ws = weekStart(d);
-    const we = new Date(ws); we.setDate(we.getDate()+6);
-    const sm = MONTHS[ws.getMonth()].slice(0,3), em = MONTHS[we.getMonth()].slice(0,3);
-    t = ws.getMonth() === we.getMonth()
-      ? `${sm} ${ws.getDate()} – ${we.getDate()}, ${ws.getFullYear()}`
-      : `${sm} ${ws.getDate()} – ${em} ${we.getDate()}, ${we.getFullYear()}`;
+    if (isMobile()) {
+      t = `${DAYS_L[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+    } else {
+      const ws = weekStart(d);
+      const we = new Date(ws); we.setDate(we.getDate()+6);
+      const sm = MONTHS[ws.getMonth()].slice(0,3), em = MONTHS[we.getMonth()].slice(0,3);
+      t = ws.getMonth() === we.getMonth()
+        ? `${sm} ${ws.getDate()} – ${we.getDate()}, ${ws.getFullYear()}`
+        : `${sm} ${ws.getDate()} – ${em} ${we.getDate()}, ${we.getFullYear()}`;
+    }
   } else {
     t = `${DAYS_L[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
   }
@@ -1548,7 +1682,7 @@ function monthCell(day, ds, otherMo, td) {
   const evs = eventsOnDate(ds);
   const isToday = ds === td;
   const cls = ['month-cell', otherMo ? 'other-month' : '', isToday ? 'today' : ''].filter(Boolean).join(' ');
-  const max = 3;
+  const max = isMobile() ? 1 : 3;
   let evHtml = evs.slice(0,max).map(e =>
     `<div class="cell-event" style="background:${getEventColor(e)}"
          onclick="event.stopPropagation();openEditEvent('${e.id}')"
@@ -1566,6 +1700,7 @@ function monthCell(day, ds, otherMo, td) {
 //  WEEKLY VIEW
 // ═══════════════════════════════════════════
 function renderWeekly() {
+  if (isMobile()) return renderDaily();
   const HOUR_PX = 56;
   const td   = todayStr();
   const ws   = weekStart(state.curDate);
@@ -2344,12 +2479,20 @@ document.getElementById('categoryModal').addEventListener('click', function(e) {
 // ═══════════════════════════════════════════
 state.todoFilterDate = todayStr();
 load();
+initMobileTabs();
 setView('weekly');   // triggers render
 
 // Request browser notification permission
 if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
   Notification.requestPermission();
 }
+// Re-render when crossing mobile/desktop threshold (e.g. device rotation)
+let _lastMobile = isMobile();
+window.addEventListener('resize', () => {
+  const nowMobile = isMobile();
+  if (nowMobile !== _lastMobile) { _lastMobile = nowMobile; render(); }
+});
+
 // Reminder polling — check every 30 seconds
 checkReminders();
 setInterval(checkReminders, 30000);
