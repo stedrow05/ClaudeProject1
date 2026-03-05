@@ -193,6 +193,7 @@
       overflow-y: auto;
       padding: 8px;
     }
+    .todo-list.week-mode { padding: 0; overflow-x: auto; }
 
     .todo-item {
       display: flex;
@@ -210,9 +211,6 @@
     .todo-item.rolled-over { background: #fff5f5; border-color: #fed7d7; }
     .todo-item.rolled-over:hover { background: #fed7d7; border-color: #fc8181; }
     .todo-item.editing { border-color: #4299e1; background: #ebf8ff; }
-
-    .todo-text-wrap { cursor: pointer; }
-    .todo-text-wrap:hover .todo-text { color: #2b6cb0; }
 
     .todo-edit-text {
       width: 100%;
@@ -259,7 +257,9 @@
       flex-direction: column;
       gap: 2px;
       min-width: 0;
+      cursor: pointer;
     }
+    .todo-text-wrap:hover .todo-text { color: #2b6cb0; }
 
     .todo-text {
       font-size: 0.83rem;
@@ -1534,8 +1534,11 @@
 // ═══════════════════════════════════════════
 //  CONSTANTS
 // ═══════════════════════════════════════════
+const STORAGE_KEY = STORAGE_KEY;
 const COLORS = ['#4299e1','#48bb78','#ed8936','#e53e3e','#9f7aea','#38b2ac','#f6ad55','#667eea'];
-const firedReminders = new Set(); // "ev-{id}-YYYY-MM-DD" | "todo-{id}-YYYY-MM-DD"
+// Persisted to sessionStorage so page refreshes don't re-fire reminders
+const firedReminders = new Set(JSON.parse(sessionStorage.getItem('firedReminders') || '[]'));
+function saveFiredReminders() { sessionStorage.setItem('firedReminders', JSON.stringify([...firedReminders])); }
 
 const DEFAULT_CATEGORIES = [
   { id: 'c1', name: 'Lesson',         color: '#4299e1' },
@@ -1574,7 +1577,7 @@ let state = {
 // ═══════════════════════════════════════════
 function load() {
   try {
-    const d = JSON.parse(localStorage.getItem('teacherAgenda2') || '{}');
+    const d = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
     state.events     = d.events || [];
     state.todos      = d.todos  || [];
     state.categories = (d.categories && d.categories.length)
@@ -1586,7 +1589,7 @@ function load() {
 }
 
 function save() {
-  localStorage.setItem('teacherAgenda2', JSON.stringify({
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
     events: state.events, todos: state.todos, categories: state.categories
   }));
 }
@@ -1650,6 +1653,9 @@ function setPanelView(mode) {
   layout.classList.toggle('hide-calendar', mode === 'tasks');
   document.querySelectorAll('.panel-btn').forEach(b => b.classList.toggle('active', b.dataset.panel === mode));
   document.getElementById('viewSwitcher').style.visibility = mode === 'tasks' ? 'hidden' : 'visible';
+  const fab = document.getElementById('addTaskFab');
+  if (fab) fab.classList.toggle('visible', mode === 'tasks');
+  if (mode !== 'tasks') closeMobileAddTask();
 }
 
 function initMobileTabs() {
@@ -1783,11 +1789,13 @@ function onRepeatChange() {
 }
 
 function evTopPx(ev, hourPx) {
+  if (!ev.startTime) return 0;
   const [h, m] = ev.startTime.split(':').map(Number);
   return Math.max(0, ((h - HOURS[0]) + m / 60) * hourPx);
 }
 
 function evHeightPx(ev, hourPx) {
+  if (!ev.startTime) return Math.max(hourPx * 0.75, 22);
   if (!ev.endTime) return Math.max(hourPx * 0.75, 22);
   const [sh, sm] = ev.startTime.split(':').map(Number);
   const [eh, em] = ev.endTime.split(':').map(Number);
@@ -1878,7 +1886,7 @@ function renderWeekly() {
     days.forEach(d => {
       const ds  = toStr(d), isT = ds === td;
       const evs = eventsOnDate(ds).filter(e => !e.startTime);
-      html += `<div class="week-allday-cell${isT?' today-col':''}" onclick="openAddEventAt('${ds}','')">
+      html += `<div class="week-allday-cell${isT?' today-col':''}" onclick="openAddEvent('${ds}','')">
         ${evs.map(e=>`<div class="week-event" style="background:${getEventColor(e)}" onclick="event.stopPropagation();openEditEvent('${e.id}')" title="${esc(e.title)}">${esc(e.title)}${e.repeat==='weekly'?' ↻':''}</div>`).join('')}
       </div>`;
     });
@@ -1897,7 +1905,7 @@ function renderWeekly() {
     const ds  = toStr(d), isT = ds === td;
     const evs = eventsOnDate(ds).filter(e => e.startTime);
     html += `<div class="week-day-col${isT?' today-col':''}" style="height:${totalH}px"
-                  onclick="openAddEventAt('${ds}','')">`;
+                  onclick="openAddEvent('${ds}','')">`;
     HOURS.forEach((h, i) => {
       html += `<div class="hour-line" style="top:${i * HOUR_PX}px"></div>`;
     });
@@ -1961,7 +1969,7 @@ function renderDaily() {
   HOURS.forEach((h, i) => {
     html += `<div class="hour-line" style="top:${i * HOUR_PX}px"></div>`;
     html += `<div class="day-hour-click" style="top:${i*HOUR_PX}px;height:${HOUR_PX}px"
-                  onclick="openAddEventAt('${ds}','${String(h).padStart(2,'0')}:00')"></div>`;
+                  onclick="openAddEvent('${ds}','${String(h).padStart(2,'0')}:00')"></div>`;
   });
 
   // Timed events
@@ -2068,8 +2076,7 @@ function renderTodoWeek(list, count) {
   });
 
   // Switch list to horizontal scroll mode for column layout
-  list.style.padding = '0';
-  list.style.overflowX = 'auto';
+  list.classList.add('week-mode');
 
   let html = '<div class="todo-week-grid">';
   days.forEach(d => {
@@ -2106,26 +2113,7 @@ function renderTodoWeek(list, count) {
         // ── Edit mode ──
         if (t.id === state._editTodoId) {
           html += `<div class="week-todo-item" style="flex-direction:column;align-items:stretch;cursor:default;border-color:#4299e1;background:#ebf8ff">
-            <input class="todo-edit-text" id="todoEditText" value="${esc(t.text)}"
-                   onkeydown="if(event.key==='Enter')saveTodo('${t.id}');else if(event.key==='Escape')cancelEditTodo()">
-            <div class="todo-date-fields">
-              <div class="todo-date-field" style="grid-column:1/-1">
-                <span class="todo-due-label">Do on</span>
-                <input class="todo-due-input" id="todoEditDo" type="date" value="${t.doDate || ''}">
-              </div>
-              <div class="todo-date-field">
-                <span class="todo-due-label">Due time</span>
-                <input class="todo-due-input" id="todoEditDueTime" type="time" value="${t.dueTime || ''}">
-              </div>
-              <div class="todo-date-field">
-                <span class="todo-due-label">Due date</span>
-                <input class="todo-due-input" id="todoEditDue" type="date" value="${t.dueDate || ''}">
-              </div>
-            </div>
-            <div class="todo-edit-actions">
-              <button class="todo-edit-cancel" onclick="cancelEditTodo()">Cancel</button>
-              <button class="todo-edit-save"   onclick="saveTodo('${t.id}')">Save</button>
-            </div>
+            ${todoEditFormHtml(t)}
           </div>`;
           return;
         }
@@ -2162,9 +2150,11 @@ function renderTodoWeek(list, count) {
   html += '</div>';
 
   list.innerHTML = html;
-  const open = state.todos.filter(t => !t.completed).length;
-  const done = state.todos.filter(t =>  t.completed).length;
-  count.textContent = `${open} open · ${done} done`;
+  const weekDates = new Set(days.map(d => toStr(d)));
+  const weekTodos = state.todos.filter(t => weekDates.has(t.doDate));
+  const open = weekTodos.filter(t => !t.completed).length;
+  const done = weekTodos.filter(t =>  t.completed).length;
+  count.textContent = `${open} open · ${done} done (this week)`;
 }
 
 function fmtDate(ds) {
@@ -2226,6 +2216,29 @@ function saveTodo(id) {
   renderTodos();
 }
 
+function todoEditFormHtml(t) {
+  return `<input class="todo-edit-text" id="todoEditText" value="${esc(t.text)}"
+               onkeydown="if(event.key==='Enter')saveTodo('${t.id}');else if(event.key==='Escape')cancelEditTodo()">
+    <div class="todo-date-fields">
+      <div class="todo-date-field" style="grid-column:1/-1">
+        <span class="todo-due-label">Do on</span>
+        <input class="todo-due-input" id="todoEditDo" type="date" value="${t.doDate || ''}">
+      </div>
+      <div class="todo-date-field">
+        <span class="todo-due-label">Due time</span>
+        <input class="todo-due-input" id="todoEditDueTime" type="time" value="${t.dueTime || ''}">
+      </div>
+      <div class="todo-date-field">
+        <span class="todo-due-label">Due date</span>
+        <input class="todo-due-input" id="todoEditDue" type="date" value="${t.dueDate || ''}">
+      </div>
+    </div>
+    <div class="todo-edit-actions">
+      <button class="todo-edit-cancel" onclick="cancelEditTodo()">Cancel</button>
+      <button class="todo-edit-save"   onclick="saveTodo('${t.id}')">Save</button>
+    </div>`;
+}
+
 function renderTodos() {
   const list  = document.getElementById('todoList');
   const count = document.getElementById('todoCount');
@@ -2234,8 +2247,7 @@ function renderTodos() {
   if (state.todoFilter === 'week') { renderTodoWeek(list, count); return; }
 
   // Restore normal list styling when not in week view
-  list.style.padding = '';
-  list.style.overflowX = '';
+  list.classList.remove('week-mode');
 
   let filtered = state.todos;
   if (state.todoFilter === 'open')  filtered = filtered.filter(t => !t.completed);
@@ -2270,29 +2282,9 @@ function renderTodos() {
 
       // ── Edit mode ──
       if (t.id === state._editTodoId) {
-        return `
-      <div class="todo-item editing">
+        return `<div class="todo-item editing">
         <div class="todo-text-wrap" style="cursor:default">
-          <input class="todo-edit-text" id="todoEditText" value="${esc(t.text)}"
-                 onkeydown="if(event.key==='Enter')saveTodo('${t.id}');else if(event.key==='Escape')cancelEditTodo()">
-          <div class="todo-date-fields">
-            <div class="todo-date-field" style="grid-column:1/-1">
-              <span class="todo-due-label">Do on</span>
-              <input class="todo-due-input" id="todoEditDo" type="date" value="${t.doDate || ''}">
-            </div>
-            <div class="todo-date-field">
-              <span class="todo-due-label">Due time</span>
-              <input class="todo-due-input" id="todoEditDueTime" type="time" value="${t.dueTime || ''}">
-            </div>
-            <div class="todo-date-field">
-              <span class="todo-due-label">Due date</span>
-              <input class="todo-due-input" id="todoEditDue" type="date" value="${t.dueDate || ''}">
-            </div>
-          </div>
-          <div class="todo-edit-actions">
-            <button class="todo-edit-cancel" onclick="cancelEditTodo()">Cancel</button>
-            <button class="todo-edit-save"   onclick="saveTodo('${t.id}')">Save</button>
-          </div>
+          ${todoEditFormHtml(t)}
         </div>
       </div>`;
       }
@@ -2375,7 +2367,9 @@ function checkReminders() {
   const td    = todayStr();
 
   // Prune keys from previous days to prevent unbounded growth
-  firedReminders.forEach(k => { if (!k.endsWith(td)) firedReminders.delete(k); });
+  let pruned = false;
+  firedReminders.forEach(k => { if (!k.endsWith(td)) { firedReminders.delete(k); pruned = true; } });
+  if (pruned) saveFiredReminders();
 
   // Events — 30 min before startTime
   eventsOnDate(td).forEach(ev => {
@@ -2387,6 +2381,7 @@ function checkReminders() {
     const reminderMs = startMs - 30 * 60 * 1000;
     if (nowMs >= reminderMs && nowMs < startMs) {
       firedReminders.add(key);
+      saveFiredReminders();
       fireNotification(`Upcoming: ${ev.title}`, `Starts at ${fmtTime(ev.startTime)} — in about 30 min`);
     }
   });
@@ -2402,6 +2397,7 @@ function checkReminders() {
     const reminderMs = dueMs - 30 * 60 * 1000;
     if (nowMs >= reminderMs && nowMs < dueMs) {
       firedReminders.add(key);
+      saveFiredReminders();
       fireNotification(`Task due soon: ${todo.text}`, `Due at ${fmtTime(todo.dueTime)} — in about 30 min`);
     }
   });
@@ -2481,7 +2477,7 @@ function addCategory() {
   renderCategoryManager();
   // Refresh the select in the event modal if open
   const evCat = document.getElementById('evCategory');
-  if (evCat) evCat.innerHTML = buildCategoryOptions(evCat.dataset.selected || '');
+  if (evCat) evCat.innerHTML = buildCategoryOptions(evCat.value || '');
 }
 
 function deleteCategory(id) {
@@ -2544,7 +2540,6 @@ function openAddEvent(date, time) {
   document.getElementById('eventModal').classList.add('open');
 }
 
-function openAddEventAt(ds, time) { openAddEvent(ds, time); }
 
 function openEditEvent(id) {
   const e = state.events.find(e => e.id === id);
